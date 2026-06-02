@@ -1,0 +1,8 @@
+<svg width="231" height="48" viewBox="0 0 231 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M0 12.6316C0 5.65535 5.65535 0 12.6316 0H35.3684C42.3446 0 48 5.65535 48 12.6316V35.3684C48 42.3446 42.3446 48 35.3684 48H12.6316C5.65535 48 0 42.3446 0 35.3684V12.6316Z" fill="#465FFF"/>
+  <path d="M15 13.5V30C15 31.6569 16.3431 33 18 33H34.5" stroke="white" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="15" cy="13.5" r="3.9" fill="white"/>
+  <circle cx="15" cy="33" r="3.9" fill="#465FFF" stroke="white" stroke-width="3.2"/>
+  <circle cx="34.5" cy="33" r="3.9" fill="white"/>
+  <text x="62" y="31" font-family="Anek Telugu, ui-sans-serif, system-ui, sans-serif" font-size="26" font-weight="600" letter-spacing="-0.3" fill="#FFFFFF">Lukeflow</text>
+</svg>
