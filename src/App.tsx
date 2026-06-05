@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -10,25 +11,22 @@ import SignUp from "./pages/AuthPages/SignUp";
 import SsoCallback from "./pages/AuthPages/SsoCallback";
 import ContinueSignUp from "./pages/AuthPages/ContinueSignUp";
 import NotFound from "./pages/OtherPage/NotFound";
-import UserProfiles from "./pages/UserProfiles";
-import Videos from "./pages/UiElements/Videos";
-import Images from "./pages/UiElements/Images";
-import Alerts from "./pages/UiElements/Alerts";
-import Badges from "./pages/UiElements/Badges";
-import Avatars from "./pages/UiElements/Avatars";
-import Buttons from "./pages/UiElements/Buttons";
-import LineChart from "./pages/Charts/LineChart";
-import BarChart from "./pages/Charts/BarChart";
-import Calendar from "./pages/Calendar";
-import BasicTables from "./pages/Tables/BasicTables";
-import FormElements from "./pages/Forms/FormElements";
-import Blank from "./pages/Blank";
 import AppLayout from "./layout/AppLayout";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import Home from "./pages/Dashboard/Home";
+import FormsList from "./pages/Forms/FormsList";
+import Email from "./pages/Email/Email";
+import Phone from "./pages/Phone/Phone";
+import Profile from "./pages/Account/Profile";
+import Settings from "./pages/Account/Settings";
+import Support from "./pages/Support/Support";
 import CreateOrganization from "./pages/CreateOrganization";
+
+// Code-split the form designer (builder + zod) to its own route chunk.
+const FormBuilderPage = lazy(() => import("./pages/Forms/FormBuilderPage"));
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import GuestRoute from "./components/auth/GuestRoute";
+import { SessionProvider } from "./context/SessionContext";
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -63,6 +61,7 @@ export default function App() {
     <Router>
       <ScrollToTop />
       <ClerkWithRouter>
+        <SessionProvider>
         <Routes>
           {/* Protected routes */}
           <Route element={<ProtectedRoute />}>
@@ -71,29 +70,28 @@ export default function App() {
 
             <Route element={<AppLayout />}>
               <Route path="/dashboard" element={<Home />} />
+              <Route path="/forms" element={<FormsList />} />
+              <Route path="/email" element={<Email />} />
+              <Route path="/phone" element={<Phone />} />
+              <Route path="/account/profile" element={<Profile />} />
+              <Route path="/account/settings" element={<Settings />} />
+              <Route path="/support" element={<Support />} />
 
-              {/* Others Page */}
-              <Route path="/profile" element={<UserProfiles />} />
-              <Route path="/calendar" element={<Calendar />} />
-              <Route path="/blank" element={<Blank />} />
-
-              {/* Forms */}
-              <Route path="/form-elements" element={<FormElements />} />
-
-              {/* Tables */}
-              <Route path="/basic-tables" element={<BasicTables />} />
-
-              {/* Ui Elements */}
-              <Route path="/alerts" element={<Alerts />} />
-              <Route path="/avatars" element={<Avatars />} />
-              <Route path="/badge" element={<Badges />} />
-              <Route path="/buttons" element={<Buttons />} />
-              <Route path="/images" element={<Images />} />
-              <Route path="/videos" element={<Videos />} />
-
-              {/* Charts */}
-              <Route path="/line-chart" element={<LineChart />} />
-              <Route path="/bar-chart" element={<BarChart />} />
+              {/* Form designer — lives in the normal dashboard shell. */}
+              <Route
+                path="/forms/:id"
+                element={
+                  <Suspense
+                    fallback={
+                      <div className="flex h-[60vh] items-center justify-center text-sm text-gray-400">
+                        Loading designer…
+                      </div>
+                    }
+                  >
+                    <FormBuilderPage />
+                  </Suspense>
+                }
+              />
             </Route>
           </Route>
 
@@ -111,6 +109,7 @@ export default function App() {
           {/* Fallback Route */}
           <Route path="*" element={<NotFound />} />
         </Routes>
+        </SessionProvider>
       </ClerkWithRouter>
     </Router>
   );

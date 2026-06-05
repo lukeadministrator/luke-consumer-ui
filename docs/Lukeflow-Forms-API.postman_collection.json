@@ -1,0 +1,351 @@
+{
+  "info": {
+    "_postman_id": "b5d1f7a0-1f2c-4f3a-9b7e-lukeflowforms01",
+    "name": "Lukeflow — Forms API",
+    "description": "REST contract for the Forms feature of the Lukeflow consumer UI.\n\nThis mirrors `src/lib/formsStore.ts` (currently localStorage). Each endpoint corresponds to one store function, so the frontend can swap localStorage calls for these endpoints with no UI changes.\n\n## Auth\nAll requests are authenticated with the signed-in user's **Clerk session JWT** as a Bearer token. The server derives the user/org from the token; forms are scoped per user/org. Set the `clerkToken` collection variable.\n\n## Core model\n```jsonc\nForm {\n  id: string,                 // uuid\n  name: string,\n  description?: string,\n  schema: string,             // serialized form-builder JSON (the editable DRAFT)\n  status: \"draft\" | \"published\" | \"archived\",\n  publishedVersion?: number,  // the version workflows resolve to\n  lockedBy?: string | null,   // check-out lock (user id) or null\n  deletedAt?: number | null,  // epoch ms when soft-deleted\n  artifacts: Artifact[],       // immutable checked-in versions\n  audit: AuditEvent[],\n  createdAt: number,          // epoch ms\n  updatedAt: number\n}\nArtifact   { version: number, schema: string, checkedInAt: number, by: string }\nAuditEvent { at: number, by: string, action: string, detail?: string }\nSubmission { id: string, formId: string, version: number, data: object, submittedAt: number, by?: string }\n```\n\n## Conventions\n- Timestamps are **epoch milliseconds** (numbers), matching the current store.\n- List endpoints return **summaries** (no `schema`/`artifacts` bodies) for speed; detail endpoints return the full object.\n- Errors use `{ \"error\": { \"code\": string, \"message\": string } }` with appropriate HTTP status (400 validation, 401 auth, 403 forbidden, 404 not found, 409 conflict/lock, 422 invalid schema).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{clerkToken}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://api.lukeflow.example/v1", "type": "string" },
+    { "key": "clerkToken", "value": "", "type": "string" },
+    { "key": "formId", "value": "", "type": "string" },
+    { "key": "version", "value": "1", "type": "string" },
+    { "key": "submissionId", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Forms",
+      "description": "Create, read, update, list. Maps to createForm / readForm / readForms / updateFormMeta / softDeleteForm.",
+      "item": [
+        {
+          "name": "List forms",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/forms?status=&q=&page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["forms"],
+              "query": [
+                { "key": "status", "value": "", "description": "Filter: draft | published | archived. Omit for all (non-deleted)." },
+                { "key": "q", "value": "", "description": "Search by name." },
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "20" }
+              ]
+            },
+            "description": "`useForms().forms` — non-deleted forms for the current user. Returns summaries (id, name, status, publishedVersion, updatedAt). Use `?status=archived` for archived."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/forms", "host": ["{{baseUrl}}"], "path": ["forms"] } },
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"data\": [\n    {\n      \"id\": \"3f1c…\",\n      \"name\": \"TCC contact Us form\",\n      \"description\": \"\",\n      \"status\": \"published\",\n      \"publishedVersion\": 3,\n      \"lockedBy\": null,\n      \"createdAt\": 1717459200000,\n      \"updatedAt\": 1717545600000\n    }\n  ],\n  \"page\": 1,\n  \"pageSize\": 20,\n  \"total\": 1\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create form",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Contact request\",\n  \"description\": \"\"\n}" },
+            "url": { "raw": "{{baseUrl}}/forms", "host": ["{{baseUrl}}"], "path": ["forms"] },
+            "description": "`createForm(name)` — new form in `draft` status with an empty draft schema and an initial `created` audit event."
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "originalRequest": { "method": "POST", "header": [], "body": { "mode": "raw", "raw": "{\"name\":\"Contact request\"}" }, "url": { "raw": "{{baseUrl}}/forms", "host": ["{{baseUrl}}"], "path": ["forms"] } },
+              "status": "Created",
+              "code": 201,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"id\": \"9b2e…\",\n  \"name\": \"Contact request\",\n  \"description\": \"\",\n  \"schema\": \"\",\n  \"status\": \"draft\",\n  \"publishedVersion\": null,\n  \"lockedBy\": null,\n  \"deletedAt\": null,\n  \"artifacts\": [],\n  \"audit\": [{ \"at\": 1717545600000, \"by\": \"user_123\", \"action\": \"created\" }],\n  \"createdAt\": 1717545600000,\n  \"updatedAt\": 1717545600000\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get form (full)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/forms/{{formId}}", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}"] },
+            "description": "`readForm(id)` — full form incl. draft `schema`, `artifacts`, and `audit`."
+          },
+          "response": []
+        },
+        {
+          "name": "Update form meta",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"TCC Contact Us\",\n  \"description\": \"Public contact form\"\n}" },
+            "url": { "raw": "{{baseUrl}}/forms/{{formId}}", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}"] },
+            "description": "`updateFormMeta(id, { name?, description? })`. Does not touch the schema or versions."
+          },
+          "response": []
+        },
+        {
+          "name": "Save draft",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"schema\": \"{\\\"entities\\\":{},\\\"root\\\":[]}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/forms/{{formId}}/draft", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}", "draft"] },
+            "description": "`saveDraft(id, schema)` — autosave / explicit save of the working draft. `schema` is the serialized builder JSON (sent as a string to match the store). Not used by workflows until checked in. 409 if the form is checked out by a different user."
+          },
+          "response": []
+        },
+        {
+          "name": "Soft delete form",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/forms/{{formId}}", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}"] },
+            "description": "`softDeleteForm(id)` — sets `deletedAt`; recoverable from Trash. **Should 409** if a workflow currently references this form (reference guard). Use `/purge` for hard delete."
+          },
+          "response": [
+            { "name": "204 No Content", "originalRequest": { "method": "DELETE", "header": [], "url": { "raw": "{{baseUrl}}/forms/{{formId}}", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}"] } }, "status": "No Content", "code": 204, "header": [], "body": "" },
+            { "name": "409 Referenced by workflow", "originalRequest": { "method": "DELETE", "header": [], "url": { "raw": "{{baseUrl}}/forms/{{formId}}", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}"] } }, "status": "Conflict", "code": 409, "header": [{ "key": "Content-Type", "value": "application/json" }], "body": "{\n  \"error\": { \"code\": \"form_in_use\", \"message\": \"Form is referenced by 2 workflows.\", \"workflows\": [\"wf_1\", \"wf_2\"] }\n}" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Lifecycle",
+      "description": "check-in / publish / check-out / discard / restore-version / archive / clone.",
+      "item": [
+        {
+          "name": "Check in (new version)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"schema\": \"{\\\"entities\\\":{},\\\"root\\\":[]}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/forms/{{formId}}/check-in", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}", "check-in"] },
+            "description": "`checkIn(id, schema)` — snapshots the draft as a new immutable **Artifact** (auto-incremented version). The **first** check-in auto-publishes (sets `publishedVersion`); later check-ins do NOT change the live version (publish is explicit). Releases the check-out lock. **422** if the schema fails the validation gate."
+          },
+          "response": [
+            { "name": "201 Created (artifact)", "originalRequest": { "method": "POST", "header": [], "body": { "mode": "raw", "raw": "{\"schema\":\"…\"}" }, "url": { "raw": "{{baseUrl}}/forms/{{formId}}/check-in", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}", "check-in"] } }, "status": "Created", "code": 201, "header": [{ "key": "Content-Type", "value": "application/json" }], "body": "{\n  \"version\": 4,\n  \"checkedInAt\": 1717545600000,\n  \"by\": \"user_123\",\n  \"form\": { \"status\": \"published\", \"publishedVersion\": 1 }\n}" },
+            { "name": "422 Invalid schema", "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/forms/{{formId}}/check-in", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}", "check-in"] } }, "status": "Unprocessable Entity", "code": 422, "header": [{ "key": "Content-Type", "value": "application/json" }], "body": "{\n  \"error\": { \"code\": \"invalid_schema\", \"message\": \"Form has no fields.\" }\n}" }
+          ]
+        },
+        {
+          "name": "Publish version",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"version\": {{version}}\n}" },
+            "url": { "raw": "{{baseUrl}}/forms/{{formId}}/publish", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}", "publish"] },
+            "description": "`publishVersion(id, version)` — sets `publishedVersion` to the given version and `status` to `published`. This is the version workflows resolve to when they don't pin a specific one. 404 if the version doesn't exist."
+          },
+          "response": []
+        },
+        {
+          "name": "Check out (lock + load version)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"version\": null\n}" },
+            "url": { "raw": "{{baseUrl}}/forms/{{formId}}/check-out", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}", "check-out"] },
+            "description": "`checkOut(id, version?)` — acquires the edit lock (`lockedBy = current user`) and loads the given version (or the published one) into the draft. **409** if already locked by another user (include `lockedBy` in the error). Released by check-in or discard. An admin force-unlock could be `DELETE /forms/:id/lock`."
+          },
+          "response": [
+            { "name": "409 Locked", "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/forms/{{formId}}/check-out", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}", "check-out"] } }, "status": "Conflict", "code": 409, "header": [{ "key": "Content-Type", "value": "application/json" }], "body": "{\n  \"error\": { \"code\": \"locked\", \"message\": \"Checked out by another user.\", \"lockedBy\": \"user_456\" }\n}" }
+          ]
+        },
+        {
+          "name": "Discard draft",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/forms/{{formId}}/discard", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}", "discard"] },
+            "description": "`discardDraft(id)` — replaces the draft with the published (or latest) version's schema and releases the lock. Returns the updated form."
+          },
+          "response": []
+        },
+        {
+          "name": "Restore version into draft",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"version\": {{version}}\n}" },
+            "url": { "raw": "{{baseUrl}}/forms/{{formId}}/restore-version", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}", "restore-version"] },
+            "description": "`restoreVersion(id, version)` — rolls an older version's schema back into the editable draft (does not change the published version). The user can then edit + check in a new version."
+          },
+          "response": []
+        },
+        {
+          "name": "Archive",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/forms/{{formId}}/archive", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}", "archive"] },
+            "description": "`archiveForm(id, true)` — sets `status = archived`. Workflows pinned to a version still resolve; new references should be warned."
+          },
+          "response": []
+        },
+        {
+          "name": "Unarchive",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/forms/{{formId}}/unarchive", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}", "unarchive"] },
+            "description": "`archiveForm(id, false)` — back to `published` (if it has a published version) or `draft`."
+          },
+          "response": []
+        },
+        {
+          "name": "Clone form",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/forms/{{formId}}/clone", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}", "clone"] },
+            "description": "`cloneForm(id)` — creates a NEW form (new id) named \"Copy of …\", copying the draft schema, with empty `artifacts`, `status = draft`. Returns the new form (201)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Versions (artifacts)",
+      "description": "Immutable checked-in versions. This is what Lukeflow workflows fetch.",
+      "item": [
+        {
+          "name": "List versions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/forms/{{formId}}/versions", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}", "versions"] },
+            "description": "All artifacts (version, checkedInAt, by) — powers the Version History modal. Omit `schema` here; fetch per-version."
+          },
+          "response": []
+        },
+        {
+          "name": "Get version",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/forms/{{formId}}/versions/{{version}}", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}", "versions", "{{version}}"] },
+            "description": "A single immutable artifact incl. its `schema` (used for Preview)."
+          },
+          "response": []
+        },
+        {
+          "name": "Resolve schema for a workflow",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/forms/{{formId}}/schema?pin=published",
+              "host": ["{{baseUrl}}"],
+              "path": ["forms", "{{formId}}", "schema"],
+              "query": [{ "key": "pin", "value": "published", "description": "`published` (current live version) or a specific number e.g. `3`. Workflows SHOULD pin a number so form edits never break a running workflow." }]
+            },
+            "description": "The contract between **forms and workflows**. A workflow references `form:{{formId}}@{pin}` and fetches the immutable schema here. `pin=published` resolves the active version; `pin=3` returns exactly v3 forever."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Submissions",
+      "description": "End-user fills out a published form (the FormRenderer's submit). Captured against the version that was filled.",
+      "item": [
+        {
+          "name": "Submit form",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"version\": null,\n  \"data\": {\n    \"firstName\": \"Ada\",\n    \"email\": \"ada@example.com\",\n    \"agree\": true\n  }\n}" },
+            "url": { "raw": "{{baseUrl}}/forms/{{formId}}/submissions", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}", "submissions"] },
+            "description": "Persist a submission. `version` null = validate against the published version. The server re-validates `data` against that version's schema (required, min/max, patterns, etc.) — never trust client validation. **422** with field errors on failure. `data` keys are the fields' Property Name (API key)."
+          },
+          "response": [
+            { "name": "201 Created", "originalRequest": { "method": "POST", "header": [], "body": { "mode": "raw", "raw": "{\"data\":{}}" }, "url": { "raw": "{{baseUrl}}/forms/{{formId}}/submissions", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}", "submissions"] } }, "status": "Created", "code": 201, "header": [{ "key": "Content-Type", "value": "application/json" }], "body": "{\n  \"id\": \"sub_abc\",\n  \"formId\": \"{{formId}}\",\n  \"version\": 3,\n  \"data\": { \"firstName\": \"Ada\", \"email\": \"ada@example.com\", \"agree\": true },\n  \"submittedAt\": 1717545600000,\n  \"by\": \"user_123\"\n}" },
+            { "name": "422 Validation failed", "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/forms/{{formId}}/submissions", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}", "submissions"] } }, "status": "Unprocessable Entity", "code": 422, "header": [{ "key": "Content-Type", "value": "application/json" }], "body": "{\n  \"error\": { \"code\": \"validation_failed\", \"message\": \"Some fields are invalid.\" },\n  \"fields\": { \"email\": \"Enter a valid email address\", \"agree\": \"This field is required\" }\n}" }
+          ]
+        },
+        {
+          "name": "List submissions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/forms/{{formId}}/submissions?page=1&pageSize=20", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}", "submissions"], "query": [{ "key": "page", "value": "1" }, { "key": "pageSize", "value": "20" }] },
+            "description": "Submissions for a form (paginated)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get submission",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/forms/{{formId}}/submissions/{{submissionId}}", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}", "submissions", "{{submissionId}}"] },
+            "description": "A single submission with its captured data + version."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Trash",
+      "description": "Soft-deleted forms. Maps to the Trash view + restoreForm / purgeForm.",
+      "item": [
+        {
+          "name": "List trash",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/forms?deleted=true", "host": ["{{baseUrl}}"], "path": ["forms"], "query": [{ "key": "deleted", "value": "true" }] },
+            "description": "`useForms().trashed` — forms with `deletedAt` set."
+          },
+          "response": []
+        },
+        {
+          "name": "Restore form",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/forms/{{formId}}/restore", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}", "restore"] },
+            "description": "`restoreForm(id)` — clears `deletedAt`."
+          },
+          "response": []
+        },
+        {
+          "name": "Purge form (hard delete)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/forms/{{formId}}/purge", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}", "purge"] },
+            "description": "`purgeForm(id)` — permanent removal. Irreversible. Should be admin-gated and blocked if referenced by a workflow."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Activity",
+      "item": [
+        {
+          "name": "Get activity / audit",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/forms/{{formId}}/activity?page=1&pageSize=50", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}", "activity"], "query": [{ "key": "page", "value": "1" }, { "key": "pageSize", "value": "50" }] },
+            "description": "The audit trail (created / checked_in / published / checked_out / discarded / restored_to_draft / archived / deleted …) with `{ at, by, action, detail }`. Powers the Activity panel in Form Settings."
+          },
+          "response": [
+            { "name": "200 OK", "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/forms/{{formId}}/activity", "host": ["{{baseUrl}}"], "path": ["forms", "{{formId}}", "activity"] } }, "status": "OK", "code": 200, "header": [{ "key": "Content-Type", "value": "application/json" }], "body": "{\n  \"data\": [\n    { \"at\": 1717545600000, \"by\": \"user_123\", \"action\": \"published\", \"detail\": \"v3\" },\n    { \"at\": 1717545500000, \"by\": \"user_123\", \"action\": \"checked_in\", \"detail\": \"v3\" },\n    { \"at\": 1717459200000, \"by\": \"user_123\", \"action\": \"created\" }\n  ]\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

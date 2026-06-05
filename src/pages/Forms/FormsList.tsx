@@ -1,0 +1,259 @@
+import { lazy, Suspense, useState } from "react";
+import { useNavigate } from "react-router";
+import { useUser } from "@clerk/react";
+import PageMeta from "../../components/common/PageMeta";
+import { Modal } from "../../components/ui/modal";
+import Button from "../../components/ui/button/Button";
+import Label from "../../components/form/Label";
+import Input from "../../components/form/input/InputField";
+import { PlusIcon, ListIcon, TrashBinIcon, TimeIcon, CopyIcon, BoxIcon } from "../../icons";
+import { useForms, publishVersion, restoreVersion, type StoredForm, type FormStatus } from "../../lib/formsStore";
+import { useSession } from "../../context/SessionContext";
+const FormRenderer = lazy(() => import("../../components/formBuilder/FormRenderer"));
+
+const STATUS_BADGE: Record<FormStatus, string> = {
+  draft: "bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-gray-400",
+  published: "bg-success-50 text-success-600 dark:bg-success-500/15",
+  archived: "bg-amber-50 text-amber-600 dark:bg-amber-500/15",
+};
+
+function formatUpdated(ts: number): string {
+  return new Date(ts).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+export default function FormsList() {
+  const navigate = useNavigate();
+  const { user } = useUser();
+  const { userId, forms, trashed, createForm, clone, archive, softDelete, restore, purge, refresh } = useForms();
+  const { can } = useSession();
+  const canCreate = can("forms:write");
+  const me = user?.fullName || user?.firstName || user?.primaryEmailAddress?.emailAddress || "You";
+  const who = (id: string) => (id && id === userId ? me : id ? `${id.slice(0, 10)}…` : "—");
+
+  const [isModalOpen, setModalOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [historyForm, setHistoryForm] = useState<StoredForm | null>(null);
+  const [previewSchema, setPreviewSchema] = useState<string | null>(null);
+  const [showTrash, setShowTrash] = useState(false);
+
+  const openModal = () => {
+    setName("");
+    setModalOpen(true);
+  };
+
+  const handleCreate = () => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const form = createForm(trimmed);
+    setModalOpen(false);
+    setName("");
+    navigate(`/forms/${form.id}`);
+  };
+
+  const hasForms = forms.length > 0;
+
+  return (
+    <>
+      <PageMeta
+        title="Forms | Lukeflow"
+        description="Build and manage your forms with the Lukeflow form builder."
+      />
+
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">
+            Forms
+          </h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            Design forms with the drag-and-drop builder.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {trashed.length > 0 && (
+            <Button variant="outline" size="sm" onClick={() => setShowTrash((v) => !v)} startIcon={showTrash ? undefined : <TrashBinIcon className="size-4" />}>
+              {showTrash ? "Back to forms" : `Trash (${trashed.length})`}
+            </Button>
+          )}
+          {hasForms && !showTrash && canCreate && (
+            <Button startIcon={<PlusIcon className="size-4" />} onClick={openModal}>
+              Create form
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {showTrash ? (
+        <div className="space-y-2">
+          {trashed.map((form) => (
+            <div key={form.id} className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3 dark:border-gray-800">
+              <div>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-200">{form.name}</p>
+                <p className="text-xs text-gray-400">Deleted {form.deletedAt ? formatUpdated(form.deletedAt) : ""}</p>
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => restore(form.id)}>Restore</Button>
+                <Button size="sm" variant="outline" onClick={() => { if (window.confirm(`Permanently delete "${form.name}"?`)) purge(form.id); }}>Delete forever</Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : hasForms ? (
+        <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+          <table className="w-full min-w-[980px] text-left text-sm">
+            <thead>
+              <tr className="border-b border-gray-200 text-xs uppercase tracking-wide text-gray-400 dark:border-gray-800">
+                <th className="px-5 py-3 font-medium">Form Name</th>
+                <th className="px-5 py-3 font-medium">Form ID</th>
+                <th className="px-5 py-3 font-medium">Status</th>
+                <th className="px-5 py-3 font-medium">Version</th>
+                <th className="px-5 py-3 font-medium">Created</th>
+                <th className="px-5 py-3 font-medium">Created By</th>
+                <th className="px-5 py-3 font-medium">Last Modified</th>
+                <th className="px-5 py-3 font-medium">Modified By</th>
+                <th className="px-5 py-3" />
+              </tr>
+            </thead>
+            <tbody>
+              {forms.map((form) => (
+                <tr
+                  key={form.id}
+                  onClick={() => navigate(`/forms/${form.id}`)}
+                  className="group cursor-pointer border-b border-gray-100 transition-colors last:border-0 hover:bg-gray-50 dark:border-gray-800/70 dark:hover:bg-white/[0.03]"
+                >
+                  <td className="px-5 py-3">
+                    <div className="flex items-center gap-3">
+                      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-500 dark:bg-brand-500/10"><ListIcon className="size-4" /></span>
+                      <span className="font-medium text-gray-800 dark:text-white/90">{form.name}</span>
+                    </div>
+                  </td>
+                  <td className="px-5 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">{form.code}</td>
+                  <td className="px-5 py-3"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase ${STATUS_BADGE[form.status]}`}>{form.status}</span></td>
+                  <td className="px-5 py-3 text-gray-600 dark:text-gray-300">{form.publishedVersion ? `v${form.publishedVersion}` : "—"}</td>
+                  <td className="px-5 py-3 text-gray-500 dark:text-gray-400">{formatUpdated(form.createdAt)}</td>
+                  <td className="px-5 py-3 text-gray-500 dark:text-gray-400">{who(form.createdBy)}</td>
+                  <td className="px-5 py-3 text-gray-500 dark:text-gray-400">{formatUpdated(form.updatedAt)}</td>
+                  <td className="px-5 py-3 text-gray-500 dark:text-gray-400">{who(form.updatedBy)}</td>
+                  <td className="px-5 py-3">
+                    <div className="flex items-center justify-end gap-0.5 opacity-0 transition group-hover:opacity-100">
+                      {form.artifacts.length > 0 && (
+                        <button type="button" aria-label="Version history" onClick={(e) => { e.stopPropagation(); setHistoryForm(form); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-brand-500 dark:hover:bg-gray-800"><TimeIcon className="size-4" /></button>
+                      )}
+                      <button type="button" aria-label="Duplicate" onClick={(e) => { e.stopPropagation(); clone(form.id); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800"><CopyIcon className="size-4" /></button>
+                      <button type="button" aria-label={form.status === "archived" ? "Unarchive" : "Archive"} onClick={(e) => { e.stopPropagation(); archive(form.id, form.status !== "archived"); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-amber-500 dark:hover:bg-gray-800"><BoxIcon className="size-4" /></button>
+                      <button type="button" aria-label="Delete" onClick={(e) => { e.stopPropagation(); softDelete(form.id); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-error-500 dark:hover:bg-gray-800"><TrashBinIcon className="size-4" /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        // Empty state shown if the user dismisses the auto-opened modal.
+        <div className="flex min-h-[50vh] flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-white px-6 py-16 text-center dark:border-gray-800 dark:bg-white/[0.03]">
+          <span className="flex size-12 items-center justify-center rounded-full bg-brand-50 text-brand-500 dark:bg-brand-500/10">
+            <ListIcon className="size-6" />
+          </span>
+          <h2 className="mt-4 text-lg font-semibold text-gray-800 dark:text-white/90">
+            No forms yet
+          </h2>
+          <p className="mt-1 max-w-sm text-sm text-gray-500 dark:text-gray-400">
+            Create your first form and start building it with the drag-and-drop
+            designer.
+          </p>
+          {canCreate && (
+            <div className="mt-6">
+              <Button startIcon={<PlusIcon className="size-4" />} onClick={openModal}>
+                Create form
+              </Button>
+            </div>
+          )}
+          {!canCreate && (
+            <p className="mt-4 text-xs text-gray-400">
+              You have read-only access to Forms — ask an admin for edit access to create one.
+            </p>
+          )}
+        </div>
+      )}
+
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setModalOpen(false)}
+        className="mx-4 w-full max-w-[480px]"
+      >
+        <div className="p-6 sm:p-8">
+          <h2 className="mb-2 text-xl font-semibold text-gray-800 dark:text-white/90">
+            Name your form
+          </h2>
+          <p className="mb-6 text-sm text-gray-500 dark:text-gray-400">
+            Give your form a name to get started. You can change it later.
+          </p>
+
+          <div>
+            <Label>
+              Form name <span className="text-error-500">*</span>
+            </Label>
+            <Input
+              name="formName"
+              placeholder="Contact request"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+
+          <div className="mt-8 flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreate} disabled={!name.trim()}>
+              Create &amp; design
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Version history */}
+      <Modal isOpen={!!historyForm} onClose={() => setHistoryForm(null)} className="mx-4 w-full max-w-[480px]">
+        <div className="p-6">
+          <h2 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">Version history</h2>
+          <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">{historyForm?.name}</p>
+          <ul className="space-y-2">
+            {historyForm?.artifacts.slice().reverse().map((art) => {
+              const isLive = historyForm.publishedVersion === art.version;
+              return (
+                <li key={art.version} className="flex items-center justify-between gap-2 rounded-lg border border-gray-200 px-4 py-2.5 dark:border-gray-800">
+                  <div className="min-w-0">
+                    <span className="text-sm font-medium text-gray-800 dark:text-white/90">v{art.version}</span>
+                    {isLive && <span className="ml-2 rounded-full bg-success-50 px-2 py-0.5 text-[10px] font-medium uppercase text-success-600 dark:bg-success-500/15">Live</span>}
+                    <span className="ml-2 text-xs text-gray-400">{new Date(art.checkedInAt).toLocaleString()}</span>
+                  </div>
+                  <div className="flex shrink-0 gap-1.5">
+                    <Button size="sm" variant="outline" onClick={() => setPreviewSchema(art.schema)}>Preview</Button>
+                    {!isLive && <Button size="sm" variant="outline" onClick={() => { if (userId) { publishVersion(userId, historyForm.id, art.version); refresh(); setHistoryForm({ ...historyForm, publishedVersion: art.version, status: "published" }); } }}>Publish</Button>}
+                    <Button size="sm" variant="outline" onClick={() => { if (userId && window.confirm(`Restore v${art.version} into the editable draft? Current draft edits will be replaced.`)) { restoreVersion(userId, historyForm.id, art.version); refresh(); setHistoryForm(null); } }}>Restore</Button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      </Modal>
+
+      {/* Artifact preview */}
+      <Modal isOpen={!!previewSchema} onClose={() => setPreviewSchema(null)} className="mx-4 max-h-[90vh] w-full max-w-[640px] overflow-y-auto">
+        <div className="p-6 sm:p-8">
+          <h2 className="mb-6 text-lg font-semibold text-gray-800 dark:text-white/90">Preview</h2>
+          {previewSchema ? (
+            <Suspense fallback={<p className="py-6 text-center text-sm text-gray-400">Loading…</p>}>
+              <FormRenderer schema={previewSchema} />
+            </Suspense>
+          ) : null}
+        </div>
+      </Modal>
+    </>
+  );
+}
