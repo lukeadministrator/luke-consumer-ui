@@ -20,14 +20,12 @@ import Phone from "./pages/Phone/Phone";
 import Profile from "./pages/Account/Profile";
 import Settings from "./pages/Account/Settings";
 import Support from "./pages/Support/Support";
-import AuthPage from "./pages/Auth/AuthPage";
 import CreateOrganization from "./pages/CreateOrganization";
 
 // Code-split the form designer (builder + zod) to its own route chunk.
 const FormBuilderPage = lazy(() => import("./pages/Forms/FormBuilderPage"));
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import GuestRoute from "./components/auth/GuestRoute";
-import { SessionProvider } from "./context/SessionContext";
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -62,7 +60,6 @@ export default function App() {
     <Router>
       <ScrollToTop />
       <ClerkWithRouter>
-        <SessionProvider>
         <Routes>
           {/* Protected routes */}
           <Route element={<ProtectedRoute />}>
@@ -74,7 +71,6 @@ export default function App() {
               <Route path="/forms" element={<FormsList />} />
               <Route path="/email" element={<Email />} />
               <Route path="/phone" element={<Phone />} />
-              <Route path="/auth" element={<AuthPage />} />
               <Route path="/account/profile" element={<Profile />} />
               <Route path="/account/settings" element={<Settings />} />
               <Route path="/support" element={<Support />} />
@@ -111,7 +107,6 @@ export default function App() {
           {/* Fallback Route */}
           <Route path="*" element={<NotFound />} />
         </Routes>
-        </SessionProvider>
       </ClerkWithRouter>
     </Router>
   );

@@ -49,7 +49,6 @@ import {
   Plug,
   BookOpen,
   Phone,
-  ShieldCheck,
   Ellipsis,
   EllipsisVertical,
   MessageSquare,
@@ -109,7 +108,6 @@ const PlugInIcon = Plug;
 const DocsIcon = BookOpen;
 const MailIcon = Mail;
 const PhoneIcon = Phone;
-const ShieldIcon = ShieldCheck;
 const HorizontaLDots = Ellipsis;
 const ChatIcon = MessageSquare;
 const MoreDotIcon = EllipsisVertical;
@@ -169,7 +167,6 @@ export {
   DocsIcon,
   MailIcon,
   PhoneIcon,
-  ShieldIcon,
   HorizontaLDots,
   ChevronUpIcon,
   ChatIcon,

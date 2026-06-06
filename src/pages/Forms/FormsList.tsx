@@ -8,7 +8,6 @@ import Label from "../../components/form/Label";
 import Input from "../../components/form/input/InputField";
 import { PlusIcon, ListIcon, TrashBinIcon, TimeIcon, CopyIcon, BoxIcon } from "../../icons";
 import { useForms, publishVersion, restoreVersion, type StoredForm, type FormStatus } from "../../lib/formsStore";
-import { useSession } from "../../context/SessionContext";
 const FormRenderer = lazy(() => import("../../components/formBuilder/FormRenderer"));
 
 const STATUS_BADGE: Record<FormStatus, string> = {
@@ -29,8 +28,6 @@ export default function FormsList() {
   const navigate = useNavigate();
   const { user } = useUser();
   const { userId, forms, trashed, createForm, clone, archive, softDelete, restore, purge, refresh } = useForms();
-  const { can } = useSession();
-  const canCreate = can("forms:write");
   const me = user?.fullName || user?.firstName || user?.primaryEmailAddress?.emailAddress || "You";
   const who = (id: string) => (id && id === userId ? me : id ? `${id.slice(0, 10)}…` : "—");
 
@@ -78,7 +75,7 @@ export default function FormsList() {
               {showTrash ? "Back to forms" : `Trash (${trashed.length})`}
             </Button>
           )}
-          {hasForms && !showTrash && canCreate && (
+          {hasForms && !showTrash && (
             <Button startIcon={<PlusIcon className="size-4" />} onClick={openModal}>
               Create form
             </Button>
@@ -165,18 +162,11 @@ export default function FormsList() {
             Create your first form and start building it with the drag-and-drop
             designer.
           </p>
-          {canCreate && (
-            <div className="mt-6">
-              <Button startIcon={<PlusIcon className="size-4" />} onClick={openModal}>
-                Create form
-              </Button>
-            </div>
-          )}
-          {!canCreate && (
-            <p className="mt-4 text-xs text-gray-400">
-              You have read-only access to Forms — ask an admin for edit access to create one.
-            </p>
-          )}
+          <div className="mt-6">
+            <Button startIcon={<PlusIcon className="size-4" />} onClick={openModal}>
+              Create form
+            </Button>
+          </div>
         </div>
       )}
 

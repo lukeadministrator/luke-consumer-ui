@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router";
 
-import { ChevronDownIcon, GridIcon, HorizontaLDots, ListIcon, MailIcon, PhoneIcon, ShieldIcon } from "../icons";
+import { ChevronDownIcon, GridIcon, HorizontaLDots, ListIcon, MailIcon, PhoneIcon } from "../icons";
 import { useSidebar } from "../context/SidebarContext";
-import { useSession } from "../context/SessionContext";
 
 type NavItem = {
   name: string;
@@ -35,18 +34,9 @@ const navItems: NavItem[] = [
   },
 ];
 
-// Operator-only: user + access administration.
-const authNavItem: NavItem = {
-  icon: <ShieldIcon />,
-  name: "Auth",
-  path: "/auth",
-};
-
 const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
-  const { operator, tenantAdmin } = useSession();
   const location = useLocation();
-  const mainNavItems = operator || tenantAdmin ? [...navItems, authNavItem] : navItems;
 
   const [openSubmenu, setOpenSubmenu] = useState<{
     type: "main" | "others";
@@ -294,7 +284,7 @@ const AppSidebar: React.FC = () => {
                   <HorizontaLDots className="size-6" />
                 )}
               </h2>
-              {renderMenuItems(mainNavItems, "main")}
+              {renderMenuItems(navItems, "main")}
             </div>
           </div>
         </nav>
