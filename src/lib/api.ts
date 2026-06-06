@@ -1,7 +1,13 @@
 // Thin client for luke-auth-engine. Attaches the Clerk token (fresh per call),
 // the active tenant, and retries once on 401 with a force-refreshed token.
 
-const AUTH_BASE = import.meta.env.VITE_AUTH_ENGINE_URL || "http://localhost:8083";
+// The auth gateway base. Render bakes in VITE_API_BASE_URL (the platform
+// convention — it points the consumer UI at the env's auth-engine);
+// VITE_AUTH_ENGINE_URL is an optional alias; localhost is the dev default.
+const AUTH_BASE =
+  import.meta.env.VITE_API_BASE_URL ||
+  import.meta.env.VITE_AUTH_ENGINE_URL ||
+  "http://localhost:8083";
 // Local testing only: when set, sends X-Dev-User instead of a Clerk Bearer
 // (matches luke-auth-engine dev-mode). Leave empty in real environments.
 const DEV_USER: string = import.meta.env.VITE_DEV_USER || "";
