@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
+import { useAuth, useUser } from "@clerk/react";
 import PageMeta from "../components/common/PageMeta";
 import { Modal } from "../components/ui/modal";
 import Button from "../components/ui/button/Button";
 import Label from "../components/form/Label";
 import Input from "../components/form/input/InputField";
+import { createOrganization } from "../lib/api";
+import { useSession } from "../context/SessionContext";
 
 type Plan = {
   id: string;
@@ -66,20 +69,39 @@ function CheckIcon() {
 
 export default function CreateOrganization() {
   const navigate = useNavigate();
+  const { getToken } = useAuth();
+  const { user } = useUser();
+  const { refresh } = useSession();
   const [isOpen, setIsOpen] = useState(true);
   const [step, setStep] = useState<1 | 2>(1);
   const [orgName, setOrgName] = useState("");
   const [selectedPlan, setSelectedPlan] = useState<string>("free");
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const openModal = () => {
     setStep(1);
     setIsOpen(true);
   };
 
-  const handleCreate = () => {
-    // Mock: persist the org however the backend wants later.
-    setIsOpen(false);
-    navigate("/dashboard");
+  const handleCreate = async () => {
+    setCreating(true);
+    setError(null);
+    try {
+      await createOrganization(getToken, {
+        name: orgName.trim(),
+        firstName: user?.firstName ?? undefined,
+        lastName: user?.lastName ?? undefined,
+        email: user?.primaryEmailAddress?.emailAddress ?? undefined,
+      });
+      refresh(); // re-derive the session — the user is now a tenant owner
+      setIsOpen(false);
+      navigate("/dashboard");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCreating(false);
+    }
   };
 
   return (
@@ -213,11 +235,14 @@ export default function CreateOrganization() {
                 })}
               </div>
 
+              {error && <p className="mt-4 text-sm text-error-500">{error}</p>}
               <div className="mt-8 flex items-center justify-between">
-                <Button variant="outline" onClick={() => setStep(1)}>
+                <Button variant="outline" onClick={() => setStep(1)} disabled={creating}>
                   Back
                 </Button>
-                <Button onClick={handleCreate}>Create organization</Button>
+                <Button onClick={handleCreate} disabled={creating}>
+                  {creating ? "Creating…" : "Create organization"}
+                </Button>
               </div>
             </div>
           )}

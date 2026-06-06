@@ -1,17 +1,21 @@
-// Admin API for the Auth page. Everything goes through the auth-engine gateway
-// (Clerk token + active tenant), which proxies to core-engine (users/groups via
-// engine-rest) and capability-engine (capability grants). These are operator
-// actions — the signed-in user must have the Camunda authorizations for them.
+// Admin API for the Auth page. Calls the tenant-scoped org-admin API on
+// core-engine (/api/org/*) through the gateway. Every call is authorized
+// server-side (caller must be tenant-admin of the active tenant, or operator)
+// and scoped to that tenant — so org owners self-serve without global admin.
 import { useAuth } from "@clerk/react";
 import { useCallback } from "react";
 import { authFetch } from "./api";
 import { useSession } from "../context/SessionContext";
+
+export type Level = "none" | "read" | "read-write";
 
 export interface AdminUser {
   id: string;
   firstName?: string;
   lastName?: string;
   email?: string;
+  roles?: Record<string, Level>; // tenantUser/processUser/taskUser
+  candidateGroups?: string[]; // group ids (namespaced "<tenant>:slug")
 }
 export interface CapabilityDef {
   code: string;
@@ -22,15 +26,12 @@ export interface CandidateGroup {
   name: string;
 }
 
-/** The 3 platform roles (Tenant / Process / Task) → their base Camunda role group. */
-export const CAMUNDA_ROLES: { key: string; label: string }[] = [
-  { key: "tenant-user", label: "Tenant User" },
-  { key: "process-operator", label: "Process User" },
-  { key: "task-worker", label: "Task User" },
+/** The 3 platform roles: matrix dimension + the Camunda role group it maps to. */
+export const CAMUNDA_ROLES: { dim: string; group: string; label: string }[] = [
+  { dim: "tenantUser", group: "tenant-user", label: "Tenant User" },
+  { dim: "processUser", group: "process-operator", label: "Process User" },
+  { dim: "taskUser", group: "task-worker", label: "Task User" },
 ];
-
-export type Level = "none" | "read" | "read-write";
-export const LEVELS: Level[] = ["none", "read", "read-write"];
 
 export interface NewUser {
   id: string;
@@ -38,84 +39,50 @@ export interface NewUser {
   lastName: string;
   email: string;
   password: string;
-  role: string; // a CAMUNDA_ROLES key
+  role: string; // a CAMUNDA_ROLES group
   accessLevel: "READ_ONLY" | "READ_WRITE";
 }
 
-/** Bound admin methods (auth + tenant already wired in). */
 export function useAdminApi() {
   const { getToken } = useAuth();
   const { tenant } = useSession();
 
   const call = useCallback(
-    async (path: string, init?: RequestInit): Promise<Response> =>
+    (path: string, init?: RequestInit): Promise<Response> =>
       authFetch(path, { getToken, tenant: tenant ?? undefined, ...init }),
     [getToken, tenant]
   );
-
   const json = async <T,>(res: Response): Promise<T> => {
     if (!res.ok) throw new Error(`${res.status} ${await res.text().catch(() => "")}`);
     return (res.status === 204 ? null : await res.json()) as T;
   };
+  const jsonBody = (init: RequestInit, body: unknown): RequestInit => ({
+    ...init,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 
   return {
     tenant,
 
-    /* ── reads ─────────────────────────────────────────── */
-    listUsers: useCallback(async (): Promise<AdminUser[]> => json(await call("/engine-rest/user")), [call]),
+    listUsers: useCallback(async (): Promise<AdminUser[]> => json(await call("/api/org/users")), [call]),
+    listCapabilities: useCallback(async (): Promise<CapabilityDef[]> => json(await call("/api/org/capabilities")), [call]),
+    listCandidateGroups: useCallback(async (): Promise<CandidateGroup[]> => json(await call("/api/org/candidate-groups")), [call]),
+    userCapabilities: useCallback(
+      async (userId: string): Promise<{ capabilityCode: string; level: Level }[]> =>
+        json(await call(`/api/org/users/${encodeURIComponent(userId)}/capabilities`)),
+      [call]
+    ),
 
-    listCapabilities: useCallback(async (): Promise<CapabilityDef[]> => {
-      const caps = await json<CapabilityDef[]>(await call("/api/capabilities"));
-      return caps.filter((c) => c.code); // active catalog entries
-    }, [call]),
+    createUser: useCallback(
+      async (u: NewUser): Promise<void> => {
+        await json(await call("/api/org/users", jsonBody({ method: "POST" }, u)));
+      },
+      [call]
+    ),
 
-    listCandidateGroups: useCallback(async (): Promise<CandidateGroup[]> => {
-      // type=ORGANIZATIONAL = candidate groups (no authorizations), per core-engine.
-      return json(await call("/engine-rest/group?type=ORGANIZATIONAL"));
-    }, [call]),
-
-    /** group ids the user belongs to (role + organizational). */
-    userGroupIds: useCallback(async (userId: string): Promise<string[]> => {
-      const groups = await json<{ id: string }[]>(await call(`/engine-rest/group?member=${encodeURIComponent(userId)}`));
-      return groups.map((g) => g.id);
-    }, [call]),
-
-    /** capabilityCode → level for a user in the active tenant. */
-    userCapabilities: useCallback(async (userId: string): Promise<Record<string, Level>> => {
-      const grants = await json<{ capabilityCode: string; level: Level }[]>(
-        await call(`/api/tenants/${encodeURIComponent(tenant ?? "")}/users/${encodeURIComponent(userId)}/capabilities`)
-      );
-      const out: Record<string, Level> = {};
-      grants.forEach((g) => (out[g.capabilityCode] = g.level));
-      return out;
-    }, [call, tenant]),
-
-    /* ── writes ────────────────────────────────────────── */
-
-    /** Create a user via engine-rest (profile + password), join the tenant, assign the role. */
-    createUser: useCallback(async (u: NewUser): Promise<void> => {
-      await json(await call("/engine-rest/user/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          profile: { id: u.id, firstName: u.firstName, lastName: u.lastName, email: u.email },
-          credentials: { password: u.password },
-        }),
-      }));
-      if (tenant) {
-        await call(`/engine-rest/tenant/${encodeURIComponent(tenant)}/users/${encodeURIComponent(u.id)}`, { method: "PUT" });
-      }
-      const group = u.accessLevel === "READ_ONLY" ? `${u.role}-readonly` : u.role;
-      await call(`/engine-rest/group/${encodeURIComponent(group)}/members/${encodeURIComponent(u.id)}`, { method: "PUT" });
-    }, [call, tenant]),
-
-    /** Invite by email — needs the Clerk-invitation backend (POST /api/admin/invite). */
     inviteUser: useCallback(async (email: string, role: string): Promise<void> => {
-      const res = await call("/api/admin/invite", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, role }),
-      });
+      const res = await call("/api/admin/invite", jsonBody({ method: "POST" }, { email, role }));
       if (!res.ok) {
         throw new Error(
           res.status === 404
@@ -125,34 +92,21 @@ export function useAdminApi() {
       }
     }, [call]),
 
-    /** Set a capability level (none = revoke). */
     setCapability: useCallback(async (userId: string, code: string, level: Level): Promise<void> => {
-      const base = `/api/tenants/${encodeURIComponent(tenant ?? "")}/users/${encodeURIComponent(userId)}/capabilities/${encodeURIComponent(code)}`;
-      if (level === "none") {
-        await call(base, { method: "DELETE" });
-      } else {
-        await json(await call(base, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ level }),
-        }));
-      }
-    }, [call, tenant]),
-
-    /** Set a Camunda role level by reconciling base / -readonly group membership. */
-    setRole: useCallback(async (userId: string, roleKey: string, level: Level): Promise<void> => {
-      const base = `/engine-rest/group/${encodeURIComponent(roleKey)}/members/${encodeURIComponent(userId)}`;
-      const ro = `/engine-rest/group/${encodeURIComponent(roleKey + "-readonly")}/members/${encodeURIComponent(userId)}`;
-      await call(base, { method: "DELETE" }).catch(() => {});
-      await call(ro, { method: "DELETE" }).catch(() => {});
-      if (level === "read-write") await call(base, { method: "PUT" });
-      else if (level === "read") await call(ro, { method: "PUT" });
+      const base = `/api/org/users/${encodeURIComponent(userId)}/capabilities/${encodeURIComponent(code)}`;
+      await json(level === "none" ? await call(base, { method: "DELETE" }) : await call(base, jsonBody({ method: "PUT" }, { level })));
     }, [call]),
 
-    /** Toggle candidate-group membership. */
+    setRole: useCallback(async (userId: string, group: string, level: Level): Promise<void> => {
+      await json(await call(`/api/org/users/${encodeURIComponent(userId)}/roles/${encodeURIComponent(group)}`, jsonBody({ method: "PUT" }, { level })));
+    }, [call]),
+
     setGroupMembership: useCallback(async (userId: string, groupId: string, member: boolean): Promise<void> => {
-      const path = `/engine-rest/group/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`;
-      await call(path, { method: member ? "PUT" : "DELETE" });
+      await call(`/api/org/users/${encodeURIComponent(userId)}/candidate-groups/${encodeURIComponent(groupId)}`, { method: member ? "PUT" : "DELETE" });
+    }, [call]),
+
+    createCandidateGroup: useCallback(async (name: string): Promise<void> => {
+      await json(await call("/api/org/candidate-groups", jsonBody({ method: "POST" }, { name })));
     }, [call]),
   };
 }

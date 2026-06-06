@@ -97,7 +97,7 @@ export default function AuthenticationTab() {
               <div>
                 <Label htmlFor="role">Role</Label>
                 <select id="role" value={form.role} onChange={(e) => set("role", e.target.value)} className={selectCls}>
-                  {CAMUNDA_ROLES.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
+                  {CAMUNDA_ROLES.map((r) => <option key={r.group} value={r.group}>{r.label}</option>)}
                 </select>
               </div>
               <div>
@@ -130,7 +130,7 @@ export default function AuthenticationTab() {
             <div>
               <Label htmlFor="irole">Role</Label>
               <select id="irole" value={inviteRole} onChange={(e) => setInviteRole(e.target.value)} className={selectCls}>
-                {CAMUNDA_ROLES.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
+                {CAMUNDA_ROLES.map((r) => <option key={r.group} value={r.group}>{r.label}</option>)}
               </select>
             </div>
           </div>

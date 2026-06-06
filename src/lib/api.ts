@@ -12,6 +12,7 @@ export type GetToken = (opts?: { skipCache?: boolean }) => Promise<string | null
 export interface SessionView {
   userId: string;
   operator: boolean;
+  tenantAdmin: boolean; // owner/admin of (a) tenant — can use the Auth page
   tenant: string | null;
   tenants: string[];
   roles: Record<string, string>; // tenantUser/processUser/taskUser → none|read|read-write
@@ -56,4 +57,21 @@ export async function fetchSession(getToken: GetToken, tenant?: string): Promise
     throw new Error(`/session failed (${res.status})`);
   }
   return (await res.json()) as SessionView;
+}
+
+/** Create an organization (tenant) and become its owner (tenant-admin). */
+export async function createOrganization(
+  getToken: GetToken,
+  body: { name: string; firstName?: string; lastName?: string; email?: string }
+): Promise<{ tenantId: string; name: string }> {
+  const res = await authFetch("/api/organizations", {
+    getToken,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(`Could not create organization (${res.status})`);
+  }
+  return res.json();
 }

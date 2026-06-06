@@ -44,9 +44,9 @@ const authNavItem: NavItem = {
 
 const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
-  const { operator } = useSession();
+  const { operator, tenantAdmin } = useSession();
   const location = useLocation();
-  const mainNavItems = operator ? [...navItems, authNavItem] : navItems;
+  const mainNavItems = operator || tenantAdmin ? [...navItems, authNavItem] : navItems;
 
   const [openSubmenu, setOpenSubmenu] = useState<{
     type: "main" | "others";

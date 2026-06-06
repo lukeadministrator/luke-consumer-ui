@@ -9,13 +9,14 @@ import {
   type Level,
 } from "../../lib/admin";
 
+const dimToGroup = Object.fromEntries(CAMUNDA_ROLES.map((r) => [r.dim, r.group]));
+
 export default function AuthorizationTab() {
   const api = useAdminApi();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [capabilities, setCapabilities] = useState<CapabilityDef[]>([]);
   const [groups, setGroups] = useState<CandidateGroup[]>([]);
   const [caps, setCaps] = useState<Record<string, Record<string, Level>>>({});
-  const [groupIds, setGroupIds] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,10 +28,15 @@ export default function AuthorizationTab() {
       setUsers(us);
       setCapabilities(cs);
       setGroups(gs);
-      const capEntries = await Promise.all(us.map(async (u) => [u.id, await api.userCapabilities(u.id)] as const));
-      const gidEntries = await Promise.all(us.map(async (u) => [u.id, await api.userGroupIds(u.id)] as const));
+      const capEntries = await Promise.all(
+        us.map(async (u) => {
+          const grants = await api.userCapabilities(u.id);
+          const m: Record<string, Level> = {};
+          grants.forEach((g) => (m[g.capabilityCode] = g.level));
+          return [u.id, m] as const;
+        })
+      );
       setCaps(Object.fromEntries(capEntries));
-      setGroupIds(Object.fromEntries(gidEntries));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -43,36 +49,29 @@ export default function AuthorizationTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ── derived cell values ─────────────────────────────── */
-  const capValue = (userId: string, code: string): Level => caps[userId]?.[code] ?? "none";
-  const roleValue = (userId: string, roleKey: string): Level => {
-    const ids = groupIds[userId] ?? [];
-    if (ids.includes(roleKey)) return "read-write";
-    if (ids.includes(`${roleKey}-readonly`)) return "read";
-    return "none";
-  };
-  const groupValue = (userId: string, groupId: string): boolean => (groupIds[userId] ?? []).includes(groupId);
+  const userById = (id: string) => users.find((u) => u.id === id);
 
-  /* ── setters (optimistic local update after the API succeeds) ─ */
+  const capValue = (userId: string, code: string): Level => caps[userId]?.[code] ?? "none";
+  const roleValue = (userId: string, dim: string): Level => (userById(userId)?.roles?.[dim] as Level) ?? "none";
+  const groupValue = (userId: string, groupId: string): boolean => !!userById(userId)?.candidateGroups?.includes(groupId);
+
+  const patchUser = (userId: string, fn: (u: AdminUser) => AdminUser) =>
+    setUsers((list) => list.map((u) => (u.id === userId ? fn(u) : u)));
+
   const setCap = async (userId: string, code: string, level: Level) => {
     await api.setCapability(userId, code, level);
     setCaps((c) => ({ ...c, [userId]: { ...(c[userId] ?? {}), [code]: level } }));
   };
-  const setRole = async (userId: string, roleKey: string, level: Level) => {
-    await api.setRole(userId, roleKey, level);
-    setGroupIds((g) => {
-      const ids = (g[userId] ?? []).filter((id) => id !== roleKey && id !== `${roleKey}-readonly`);
-      if (level === "read-write") ids.push(roleKey);
-      else if (level === "read") ids.push(`${roleKey}-readonly`);
-      return { ...g, [userId]: ids };
-    });
+  const setRole = async (userId: string, dim: string, level: Level) => {
+    await api.setRole(userId, dimToGroup[dim], level);
+    patchUser(userId, (u) => ({ ...u, roles: { ...(u.roles ?? {}), [dim]: level } }));
   };
   const setGroup = async (userId: string, groupId: string, member: boolean) => {
     await api.setGroupMembership(userId, groupId, member);
-    setGroupIds((g) => {
-      const ids = (g[userId] ?? []).filter((id) => id !== groupId);
-      if (member) ids.push(groupId);
-      return { ...g, [userId]: ids };
+    patchUser(userId, (u) => {
+      const cg = (u.candidateGroups ?? []).filter((g) => g !== groupId);
+      if (member) cg.push(groupId);
+      return { ...u, candidateGroups: cg };
     });
   };
 
@@ -80,9 +79,6 @@ export default function AuthorizationTab() {
     return (
       <div className="rounded-2xl border border-error-200 bg-error-50/40 p-5 text-sm text-error-600 dark:border-error-500/30 dark:bg-error-500/5">
         Couldn't load access data: {error}
-        <p className="mt-1 text-xs text-gray-500">
-          These are operator actions — your account needs admin authorizations in the engine.
-        </p>
       </div>
     );
   }
@@ -98,14 +94,14 @@ export default function AuthorizationTab() {
         value={capValue}
         onSet={setCap}
         loading={loading}
-        emptyColumns="No capabilities in the catalog."
+        emptyColumns="This org has no capabilities yet."
       />
       <AccessMatrix
         mode="level"
         title="Camunda roles"
         description="Tenant / Process / Task access — read or read-write — enforced natively by the engine."
         users={users}
-        columns={CAMUNDA_ROLES}
+        columns={CAMUNDA_ROLES.map((r) => ({ key: r.dim, label: r.label }))}
         value={roleValue}
         onSet={setRole}
         loading={loading}

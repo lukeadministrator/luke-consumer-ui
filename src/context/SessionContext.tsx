@@ -18,6 +18,8 @@ interface SessionState {
   tenant: string | null;
   tenants: string[];
   operator: boolean;
+  /** Owner/admin of (a) tenant — may use the Auth page (scoped to their org). */
+  tenantAdmin: boolean;
   /** Switch the active org and re-derive permissions. */
   switchTenant: (tenant: string) => void;
   refresh: () => void;
@@ -75,6 +77,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     tenant: session?.tenant ?? null,
     tenants: session?.tenants ?? [],
     operator: session?.operator ?? false,
+    tenantAdmin: session?.tenantAdmin ?? false,
     switchTenant: (tenant: string) => load(tenant),
     refresh: () => load(session?.tenant ?? undefined),
   };

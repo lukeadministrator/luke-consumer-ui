@@ -7,7 +7,8 @@ import AuthorizationTab from "./AuthorizationTab";
 type Tab = "authentication" | "authorization";
 
 export default function AuthPage() {
-  const { operator, loading, session } = useSession();
+  const { operator, tenantAdmin, loading, session } = useSession();
+  const canAdmin = operator || tenantAdmin;
   const [tab, setTab] = useState<Tab>("authentication");
 
   return (
@@ -23,11 +24,11 @@ export default function AuthPage() {
 
       {loading && !session ? (
         <div className="flex h-[40vh] items-center justify-center text-sm text-gray-400">Loading…</div>
-      ) : !operator ? (
+      ) : !canAdmin ? (
         <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-6 py-16 text-center dark:border-gray-800 dark:bg-white/[0.03]">
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-white/90">Operators only</h2>
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-white/90">Admins only</h2>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Managing users and access requires an operator (admin) account.
+            Managing users and access requires being an org owner or a platform operator.
           </p>
         </div>
       ) : (
