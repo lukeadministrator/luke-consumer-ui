@@ -34,6 +34,7 @@ type AuthValue = {
   updateProfile: (input: { firstName?: string; lastName?: string }) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   deleteAccount: () => Promise<void>;
+  createOrganization: (input: { name: string }) => Promise<api.CreateOrgResult>;
   refreshSession: () => Promise<void>;
   getToken: () => string | null;
 };
@@ -121,6 +122,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     apply(null);
   }, [apply]);
 
+  const createOrganization = useCallback(
+    async (input: { name: string }) => {
+      const res = await api.createOrganization({
+        name: input.name,
+        firstName: user?.firstName ?? undefined,
+        lastName: user?.lastName ?? undefined,
+        email: user?.email,
+      });
+      // Re-read the session scoped to the new tenant (bypasses the gateway's
+      // per-(user,tenant) cache of the old unprovisioned view) → provisioned:true.
+      setSession(await api.getSession(res.tenantId));
+      return res;
+    },
+    [user],
+  );
+
   const refreshSession = useCallback(async () => {
     setSession(await api.getSession(session?.tenant ?? undefined));
   }, [session]);
@@ -138,6 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     updateProfile,
     changePassword,
     deleteAccount,
+    createOrganization,
     refreshSession,
     getToken: api.getAccessToken,
   };

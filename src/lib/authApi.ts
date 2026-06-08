@@ -170,3 +170,23 @@ export async function deleteAccount(): Promise<void> {
   await authed("/auth/account", { method: "DELETE" });
   accessToken = null;
 }
+
+export type CreateOrgResult = { tenantId: string; name: string; role: string };
+
+/**
+ * Create an organization (tenant) and become its owner. Proxied through the
+ * gateway to core-engine's POST /api/organizations — allowed even for a brand-new
+ * (unprovisioned) user, since creating the org is what provisions them.
+ */
+export function createOrganization(input: {
+  name: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+}): Promise<CreateOrgResult> {
+  return authed("/api/organizations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}

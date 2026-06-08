@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
+import { useAuth } from "../context/AuthContext";
+import { getAuthErrorMessage } from "../components/auth/authError";
 import PageMeta from "../components/common/PageMeta";
 import { Modal } from "../components/ui/modal";
 import Button from "../components/ui/button/Button";
@@ -66,20 +68,33 @@ function CheckIcon() {
 
 export default function CreateOrganization() {
   const navigate = useNavigate();
+  const { createOrganization } = useAuth();
   const [isOpen, setIsOpen] = useState(true);
   const [step, setStep] = useState<1 | 2>(1);
   const [orgName, setOrgName] = useState("");
   const [selectedPlan, setSelectedPlan] = useState<string>("free");
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState("");
 
   const openModal = () => {
     setStep(1);
     setIsOpen(true);
   };
 
-  const handleCreate = () => {
-    // Mock: persist the org however the backend wants later.
-    setIsOpen(false);
-    navigate("/dashboard");
+  const handleCreate = async () => {
+    setError("");
+    setCreating(true);
+    try {
+      // Plan selection isn't billed yet; this creates the owner's tenant and
+      // makes the user its admin, then routes into the app (now provisioned).
+      await createOrganization({ name: orgName.trim() });
+      setIsOpen(false);
+      navigate("/dashboard");
+    } catch (err) {
+      setError(getAuthErrorMessage(err));
+    } finally {
+      setCreating(false);
+    }
   };
 
   return (
@@ -213,11 +228,19 @@ export default function CreateOrganization() {
                 })}
               </div>
 
+              {error && (
+                <div className="mt-6 rounded-lg border border-error-500 bg-error-50 px-4 py-3 text-sm text-error-600 dark:border-error-500/40 dark:bg-error-500/10 dark:text-error-400">
+                  {error}
+                </div>
+              )}
+
               <div className="mt-8 flex items-center justify-between">
-                <Button variant="outline" onClick={() => setStep(1)}>
+                <Button variant="outline" onClick={() => setStep(1)} disabled={creating}>
                   Back
                 </Button>
-                <Button onClick={handleCreate}>Create organization</Button>
+                <Button onClick={handleCreate} disabled={creating}>
+                  {creating ? "Creating…" : "Create organization"}
+                </Button>
               </div>
             </div>
           )}
