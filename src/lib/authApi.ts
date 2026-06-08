@@ -190,3 +190,169 @@ export function createOrganization(input: {
     body: JSON.stringify(input),
   });
 }
+
+// ── Org admin (Auth & Access page) ──────────────────────────────────────────
+// All of these act within the caller's active tenant (X-Tenant-Id) and require
+// the caller to be a tenant-admin. Invite/add-member hit luke-auth directly
+// (they touch WorkOS); the rest are proxied through to core-engine's /api/org/*.
+
+export type RoleLevel = "none" | "read" | "read-write";
+
+/** Roles in a member row: tenantAdmin (owner) + the three assignable dimensions. */
+export type MemberRoles = {
+  tenantAdmin?: RoleLevel;
+  tenantUser?: RoleLevel;
+  processUser?: RoleLevel;
+  taskUser?: RoleLevel;
+};
+
+export type OrgMember = {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  roles: MemberRoles;
+  candidateGroups: string[];
+};
+
+export type OrgGroup = { id: string; name: string };
+
+export type CapabilityCatalogItem = {
+  code: string;
+  name: string;
+  description?: string;
+  icon?: string;
+  route?: string;
+  status?: string;
+  tier?: string;
+};
+
+export type CapabilityGrant = { capabilityCode: string; level: string };
+
+export type Invitation = {
+  id: string;
+  email: string;
+  state: string | null;
+  expiresAt: string | null;
+};
+
+const seg = (s: string) => encodeURIComponent(s);
+
+function tenantInit(tenantId: string, init: RequestInit = {}): RequestInit {
+  const headers = new Headers(init.headers);
+  headers.set("X-Tenant-Id", tenantId);
+  return { ...init, headers };
+}
+
+// Authentication tab — invitations (luke-auth → WorkOS)
+
+export function invite(
+  tenantId: string,
+  input: { firstName?: string; lastName?: string; email: string },
+): Promise<{ ok: boolean; invitation: Invitation }> {
+  return authed(
+    "/auth/org/invitations",
+    tenantInit(tenantId, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
+export function listInvitations(tenantId: string): Promise<{ invitations: Invitation[] }> {
+  return authed("/auth/org/invitations", tenantInit(tenantId));
+}
+
+export function revokeInvitation(tenantId: string, id: string): Promise<{ ok: boolean }> {
+  return authed(`/auth/org/invitations/${seg(id)}/revoke`, tenantInit(tenantId, { method: "POST" }));
+}
+
+// Authorization tab — members / roles / groups / capabilities
+
+export function addMember(
+  tenantId: string,
+  input: { email: string; role?: string; accessLevel?: string },
+): Promise<{ id: string; tenant: string }> {
+  return authed(
+    "/auth/org/members",
+    tenantInit(tenantId, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
+export function listOrgUsers(tenantId: string): Promise<OrgMember[]> {
+  return authed("/api/org/users", tenantInit(tenantId));
+}
+
+export function setUserRole(
+  tenantId: string,
+  userId: string,
+  role: string,
+  level: RoleLevel,
+): Promise<unknown> {
+  return authed(
+    `/api/org/users/${seg(userId)}/roles/${seg(role)}`,
+    tenantInit(tenantId, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ level }),
+    }),
+  );
+}
+
+export function listGroups(tenantId: string): Promise<OrgGroup[]> {
+  return authed("/api/org/candidate-groups", tenantInit(tenantId));
+}
+
+export function createGroup(tenantId: string, name: string): Promise<OrgGroup> {
+  return authed(
+    "/api/org/candidate-groups",
+    tenantInit(tenantId, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    }),
+  );
+}
+
+export function addUserToGroup(tenantId: string, userId: string, groupId: string): Promise<void> {
+  return authed(
+    `/api/org/users/${seg(userId)}/candidate-groups/${seg(groupId)}`,
+    tenantInit(tenantId, { method: "PUT" }),
+  );
+}
+
+export function removeUserFromGroup(tenantId: string, userId: string, groupId: string): Promise<void> {
+  return authed(
+    `/api/org/users/${seg(userId)}/candidate-groups/${seg(groupId)}`,
+    tenantInit(tenantId, { method: "DELETE" }),
+  );
+}
+
+export function listCapabilities(tenantId: string): Promise<CapabilityCatalogItem[]> {
+  return authed("/api/org/capabilities", tenantInit(tenantId));
+}
+
+export function getUserCapabilities(tenantId: string, userId: string): Promise<CapabilityGrant[]> {
+  return authed(`/api/org/users/${seg(userId)}/capabilities`, tenantInit(tenantId));
+}
+
+export function setUserCapability(
+  tenantId: string,
+  userId: string,
+  code: string,
+  level: RoleLevel,
+): Promise<unknown> {
+  return authed(
+    `/api/org/users/${seg(userId)}/capabilities/${seg(code)}`,
+    tenantInit(tenantId, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ level }),
+    }),
+  );
+}

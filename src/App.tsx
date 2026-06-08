@@ -15,6 +15,7 @@ import Profile from "./pages/Account/Profile";
 import Settings from "./pages/Account/Settings";
 import Support from "./pages/Support/Support";
 import CreateOrganization from "./pages/CreateOrganization";
+import AccessManagement from "./pages/Access/AccessManagement";
 
 // Code-split the form designer (builder + zod) to its own route chunk.
 const FormBuilderPage = lazy(() => import("./pages/Forms/FormBuilderPage"));
@@ -45,6 +46,7 @@ export default function App() {
               <Route path="/phone" element={<Phone />} />
               <Route path="/account/profile" element={<Profile />} />
               <Route path="/account/settings" element={<Settings />} />
+              <Route path="/access" element={<AccessManagement />} />
               <Route path="/support" element={<Support />} />
 
               {/* Form designer — lives in the normal dashboard shell. */}

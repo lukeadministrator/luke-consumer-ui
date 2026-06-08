@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router";
 
-import { ChevronDownIcon, GridIcon, HorizontaLDots, ListIcon, MailIcon, PhoneIcon } from "../icons";
+import { ChevronDownIcon, GridIcon, HorizontaLDots, ListIcon, LockIcon, MailIcon, PhoneIcon } from "../icons";
 import { useSidebar } from "../context/SidebarContext";
+import { useAuth } from "../context/AuthContext";
 
 type NavItem = {
   name: string;
@@ -36,7 +37,13 @@ const navItems: NavItem[] = [
 
 const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
+  const { session } = useAuth();
   const location = useLocation();
+
+  // Org owners get the Auth & Access admin page; everyone else doesn't see it.
+  const items: NavItem[] = session?.tenantAdmin
+    ? [...navItems, { icon: <LockIcon />, name: "Auth & Access", path: "/access" }]
+    : navItems;
 
   const [openSubmenu, setOpenSubmenu] = useState<{
     type: "main" | "others";
@@ -284,7 +291,7 @@ const AppSidebar: React.FC = () => {
                   <HorizontaLDots className="size-6" />
                 )}
               </h2>
-              {renderMenuItems(navItems, "main")}
+              {renderMenuItems(items, "main")}
             </div>
           </div>
         </nav>
