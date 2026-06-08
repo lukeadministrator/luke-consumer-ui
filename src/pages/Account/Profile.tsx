@@ -1,21 +1,20 @@
-import { useRef, useState } from "react";
-import { useUser } from "@clerk/react";
+import { useState } from "react";
+import { useAuth, useUser } from "../../context/AuthContext";
 import PageMeta from "../../components/common/PageMeta";
 import Label from "../../components/form/Label";
 import Input from "../../components/form/input/InputField";
 import Button from "../../components/ui/button/Button";
+import { getAuthErrorMessage } from "../../components/auth/authError";
 
 type Status = { kind: "idle" | "saving" | "ok" | "error"; msg?: string };
 
 export default function Profile() {
   const { isLoaded, user } = useUser();
-  const fileRef = useRef<HTMLInputElement>(null);
+  const { updateProfile } = useAuth();
 
   const [firstName, setFirstName] = useState(user?.firstName ?? "");
   const [lastName, setLastName] = useState(user?.lastName ?? "");
-  const [username, setUsername] = useState(user?.username ?? "");
   const [status, setStatus] = useState<Status>({ kind: "idle" });
-  const [uploading, setUploading] = useState(false);
 
   if (!isLoaded || !user) {
     return (
@@ -25,101 +24,46 @@ export default function Profile() {
     );
   }
 
-  const email = user.primaryEmailAddress?.emailAddress ?? "—";
-  const avatarUrl = user.imageUrl || "/images/user/owner.jpg";
+  const email = user.email || "—";
+  const initials =
+    ((user.firstName?.[0] ?? "") + (user.lastName?.[0] ?? "")).toUpperCase() ||
+    (email[0] ?? "?").toUpperCase();
   const dirty =
-    firstName !== (user.firstName ?? "") ||
-    lastName !== (user.lastName ?? "") ||
-    username !== (user.username ?? "");
+    firstName !== (user.firstName ?? "") || lastName !== (user.lastName ?? "");
 
   async function handleSave() {
-    if (!user) return;
     setStatus({ kind: "saving" });
     try {
-      await user.update({ firstName, lastName, username: username || undefined });
+      await updateProfile({ firstName, lastName });
       setStatus({ kind: "ok", msg: "Profile updated." });
     } catch (err) {
-      setStatus({ kind: "error", msg: errMsg(err) });
-    }
-  }
-
-  async function handleImage(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file || !user) return;
-    setUploading(true);
-    setStatus({ kind: "idle" });
-    try {
-      await user.setProfileImage({ file });
-      setStatus({ kind: "ok", msg: "Photo updated." });
-    } catch (err) {
-      setStatus({ kind: "error", msg: errMsg(err) });
-    } finally {
-      setUploading(false);
-      if (fileRef.current) fileRef.current.value = "";
-    }
-  }
-
-  async function handleRemoveImage() {
-    if (!user) return;
-    setUploading(true);
-    try {
-      await user.setProfileImage({ file: null });
-      setStatus({ kind: "ok", msg: "Photo removed." });
-    } catch (err) {
-      setStatus({ kind: "error", msg: errMsg(err) });
-    } finally {
-      setUploading(false);
+      setStatus({ kind: "error", msg: getAuthErrorMessage(err) });
     }
   }
 
   return (
     <>
-      <PageMeta
-        title="Edit profile | Lukeflow"
-        description="Manage your Lukeflow profile."
-      />
+      <PageMeta title="Edit profile | Lukeflow" description="Manage your Lukeflow profile." />
 
       <div className="mx-auto max-w-3xl">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-gray-800 dark:text-white/90">
-            Edit profile
-          </h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Update your name, username, and profile photo.
-          </p>
+          <h1 className="text-2xl font-semibold text-gray-800 dark:text-white/90">Edit profile</h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Update your name.</p>
         </div>
 
-        {/* Photo */}
+        {/* Avatar — social picture or initials (upload not supported by WorkOS) */}
         <section className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
           <div className="flex items-center gap-5">
-            <span className="size-20 overflow-hidden rounded-full ring-1 ring-gray-200 dark:ring-gray-700">
-              <img src={avatarUrl} alt="Profile" className="size-full object-cover" />
+            <span className="flex size-20 items-center justify-center overflow-hidden rounded-full bg-brand-50 text-lg font-semibold text-brand-600 ring-1 ring-gray-200 dark:bg-brand-500/10 dark:text-brand-400 dark:ring-gray-700">
+              {user.profilePictureUrl ? (
+                <img src={user.profilePictureUrl} alt="Profile" className="size-full object-cover" />
+              ) : (
+                initials
+              )}
             </span>
-            <div className="flex flex-col gap-2">
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={uploading}
-                  onClick={() => fileRef.current?.click()}
-                >
-                  {uploading ? "Uploading…" : "Change photo"}
-                </Button>
-                {user.hasImage && (
-                  <Button size="sm" variant="outline" disabled={uploading} onClick={handleRemoveImage}>
-                    Remove
-                  </Button>
-                )}
-              </div>
-              <p className="text-xs text-gray-400">JPG, PNG or GIF. Max 10MB.</p>
-            </div>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleImage}
-            />
+            <p className="text-xs text-gray-400">
+              Your photo comes from your social login.
+            </p>
           </div>
         </section>
 
@@ -144,20 +88,11 @@ export default function Profile() {
                 placeholder="Last name"
               />
             </div>
-            <div>
-              <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="username"
-              />
-            </div>
-            <div>
-              <Label htmlFor="email">Primary email</Label>
+            <div className="sm:col-span-2">
+              <Label htmlFor="email">Email</Label>
               <Input id="email" value={email} disabled />
               <p className="mt-1.5 text-xs text-gray-400">
-                Manage email addresses in{" "}
+                Manage your password and account in{" "}
                 <a href="/account/settings" className="text-brand-500 hover:underline">
                   Account settings
                 </a>
@@ -181,9 +116,4 @@ export default function Profile() {
       </div>
     </>
   );
-}
-
-function errMsg(err: unknown): string {
-  const e = err as { errors?: { message?: string; longMessage?: string }[]; message?: string };
-  return e?.errors?.[0]?.longMessage || e?.errors?.[0]?.message || e?.message || "Something went wrong.";
 }

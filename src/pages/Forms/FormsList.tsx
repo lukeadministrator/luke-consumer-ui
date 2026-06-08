@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState } from "react";
 import { useNavigate } from "react-router";
-import { useUser } from "@clerk/react";
+import { useUser } from "../../context/AuthContext";
 import PageMeta from "../../components/common/PageMeta";
 import { Modal } from "../../components/ui/modal";
 import Button from "../../components/ui/button/Button";
@@ -28,7 +28,7 @@ export default function FormsList() {
   const navigate = useNavigate();
   const { user } = useUser();
   const { userId, forms, trashed, createForm, clone, archive, softDelete, restore, purge, refresh } = useForms();
-  const me = user?.fullName || user?.firstName || user?.primaryEmailAddress?.emailAddress || "You";
+  const me = user?.fullName || user?.firstName || user?.email || "You";
   const who = (id: string) => (id && id === userId ? me : id ? `${id.slice(0, 10)}…` : "—");
 
   const [isModalOpen, setModalOpen] = useState(false);

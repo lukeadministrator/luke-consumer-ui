@@ -1,8 +1,7 @@
 import { Navigate, Outlet } from "react-router";
-import { useAuth } from "@clerk/react";
+import { useAuth } from "../../context/AuthContext";
 
-// Keeps already-authenticated users out of the auth pages (signin/signup),
-// redirecting them to the landing page instead.
+// Keeps already-authenticated users out of the auth pages (signin/signup).
 export default function GuestRoute() {
   const { isLoaded, isSignedIn } = useAuth();
 

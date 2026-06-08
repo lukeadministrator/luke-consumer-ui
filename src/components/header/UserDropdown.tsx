@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
 import { Dropdown } from "../ui/dropdown/Dropdown";
-import { useUser, useClerk } from "@clerk/react";
+import { useAuth, useUser } from "../../context/AuthContext";
 
 export default function UserDropdown() {
   const [isOpen, setIsOpen] = useState(false);
   const { user } = useUser();
-  const { signOut } = useClerk();
+  const { signOut } = useAuth();
 
   function toggleDropdown() {
     setIsOpen(!isOpen);
@@ -18,13 +18,13 @@ export default function UserDropdown() {
 
   function handleSignOut() {
     closeDropdown();
-    signOut({ redirectUrl: "/signin" });
+    // After sign-out, isSignedIn flips false and ProtectedRoute redirects to /signin.
+    void signOut();
   }
 
-  const email = user?.primaryEmailAddress?.emailAddress ?? "";
-  const displayName =
-    user?.fullName || user?.firstName || user?.username || email || "Account";
-  const avatarUrl = user?.imageUrl || "/images/user/owner.jpg";
+  const email = user?.email ?? "";
+  const displayName = user?.fullName || user?.firstName || email || "Account";
+  const avatarUrl = user?.profilePictureUrl || "/images/user/owner.jpg";
 
   return (
     <div className="relative">

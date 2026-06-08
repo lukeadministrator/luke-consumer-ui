@@ -1,15 +1,9 @@
 import { lazy, Suspense } from "react";
-import {
-  BrowserRouter as Router,
-  Routes,
-  Route,
-  useNavigate,
-} from "react-router";
-import { ClerkProvider } from "@clerk/react";
+import { BrowserRouter as Router, Routes, Route } from "react-router";
+import { AuthProvider } from "./context/AuthContext";
 import SignIn from "./pages/AuthPages/SignIn";
 import SignUp from "./pages/AuthPages/SignUp";
 import SsoCallback from "./pages/AuthPages/SsoCallback";
-import ContinueSignUp from "./pages/AuthPages/ContinueSignUp";
 import NotFound from "./pages/OtherPage/NotFound";
 import AppLayout from "./layout/AppLayout";
 import { ScrollToTop } from "./components/common/ScrollToTop";
@@ -27,31 +21,9 @@ const FormBuilderPage = lazy(() => import("./pages/Forms/FormBuilderPage"));
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import GuestRoute from "./components/auth/GuestRoute";
 
-const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-
-if (!PUBLISHABLE_KEY) {
+if (!import.meta.env.VITE_AUTH_API_URL) {
   throw new Error(
-    "Missing Clerk publishable key. Add VITE_CLERK_PUBLISHABLE_KEY to your .env.local file (get it from the Clerk dashboard)."
-  );
-}
-
-// ClerkProvider must live inside the Router so it can drive SPA navigation
-// through react-router instead of full-page reloads.
-function ClerkWithRouter({ children }: { children: React.ReactNode }) {
-  const navigate = useNavigate();
-  return (
-    <ClerkProvider
-      publishableKey={PUBLISHABLE_KEY}
-      routerPush={(to) => navigate(to)}
-      routerReplace={(to) => navigate(to, { replace: true })}
-      signInUrl="/signin"
-      signUpUrl="/signup"
-      signInFallbackRedirectUrl="/"
-      signUpFallbackRedirectUrl="/"
-      afterSignOutUrl="/signin"
-    >
-      {children}
-    </ClerkProvider>
+    "Missing VITE_AUTH_API_URL. Point it at the luke-auth-engine base URL in your .env.local.",
   );
 }
 
@@ -59,7 +31,7 @@ export default function App() {
   return (
     <Router>
       <ScrollToTop />
-      <ClerkWithRouter>
+      <AuthProvider>
         <Routes>
           {/* Protected routes */}
           <Route element={<ProtectedRoute />}>
@@ -99,15 +71,13 @@ export default function App() {
             <Route path="/signup" element={<SignUp />} />
           </Route>
 
-          {/* OAuth redirect handler + missing-field continuation — kept
-              outside the guards so they work mid-flow (no active session yet). */}
+          {/* Social / SSO redirect handler — outside the guards (no session yet). */}
           <Route path="/sso-callback" element={<SsoCallback />} />
-          <Route path="/signup/continue" element={<ContinueSignUp />} />
 
           {/* Fallback Route */}
           <Route path="*" element={<NotFound />} />
         </Routes>
-      </ClerkWithRouter>
+      </AuthProvider>
     </Router>
   );
 }

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useUser } from "@clerk/react";
+import { useUser } from "../../context/AuthContext";
 import PageMeta from "../../components/common/PageMeta";
 import Label from "../../components/form/Label";
 import Input from "../../components/form/input/InputField";
@@ -12,12 +12,12 @@ export default function Support() {
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
 
-  const from = user?.primaryEmailAddress?.emailAddress ?? "";
+  const from = user?.email ?? "";
 
   function handleSend() {
     const body = `${message}\n\n—\nFrom: ${from}`;
     window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(
-      subject || "Lukeflow support"
+      subject || "Lukeflow support",
     )}&body=${encodeURIComponent(body)}`;
   }
 
@@ -34,7 +34,6 @@ export default function Support() {
         </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          {/* Contact form */}
           <section className="lg:col-span-2 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
             <div className="flex flex-col gap-5">
               <div>
@@ -65,7 +64,6 @@ export default function Support() {
             </div>
           </section>
 
-          {/* Other ways */}
           <section className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
             <h2 className="mb-4 text-base font-semibold text-gray-800 dark:text-white/90">
               Other ways to reach us

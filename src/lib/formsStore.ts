@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useUser } from "@clerk/react";
+import { useUser } from "../context/AuthContext";
 
 // A form definition, serialized to JSON. Empty string = a new blank form.
 export type FormSchema = string;

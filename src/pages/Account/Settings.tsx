@@ -1,20 +1,22 @@
 import { useState } from "react";
-import { useUser, useClerk } from "@clerk/react";
+import { useNavigate } from "react-router";
+import { useAuth, useUser } from "../../context/AuthContext";
 import PageMeta from "../../components/common/PageMeta";
 import Label from "../../components/form/Label";
 import Input from "../../components/form/input/InputField";
 import Button from "../../components/ui/button/Button";
+import { getAuthErrorMessage } from "../../components/auth/authError";
 
 type Status = { kind: "idle" | "saving" | "ok" | "error"; msg?: string };
 
 export default function Settings() {
   const { isLoaded, user } = useUser();
-  const { signOut } = useClerk();
+  const { changePassword, deleteAccount } = useAuth();
+  const navigate = useNavigate();
 
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [signOutOthers, setSignOutOthers] = useState(true);
   const [pwStatus, setPwStatus] = useState<Status>({ kind: "idle" });
 
   const [confirmDelete, setConfirmDelete] = useState("");
@@ -28,12 +30,9 @@ export default function Settings() {
     );
   }
 
-  const hasPassword = user.passwordEnabled;
-
   async function handlePassword() {
-    if (!user) return;
-    if (next.length < 8) {
-      setPwStatus({ kind: "error", msg: "Password must be at least 8 characters." });
+    if (next.length < 10) {
+      setPwStatus({ kind: "error", msg: "Password must be at least 10 characters." });
       return;
     }
     if (next !== confirm) {
@@ -42,28 +41,23 @@ export default function Settings() {
     }
     setPwStatus({ kind: "saving" });
     try {
-      await user.updatePassword({
-        newPassword: next,
-        currentPassword: hasPassword ? current : undefined,
-        signOutOfOtherSessions: signOutOthers,
-      });
+      await changePassword(current, next);
       setCurrent("");
       setNext("");
       setConfirm("");
-      setPwStatus({ kind: "ok", msg: hasPassword ? "Password updated." : "Password set." });
+      setPwStatus({ kind: "ok", msg: "Password updated." });
     } catch (err) {
-      setPwStatus({ kind: "error", msg: errMsg(err) });
+      setPwStatus({ kind: "error", msg: getAuthErrorMessage(err) });
     }
   }
 
   async function handleDelete() {
-    if (!user) return;
     setDelStatus({ kind: "saving" });
     try {
-      await user.delete();
-      await signOut({ redirectUrl: "/signin" });
+      await deleteAccount();
+      navigate("/signin", { replace: true });
     } catch (err) {
-      setDelStatus({ kind: "error", msg: errMsg(err) });
+      setDelStatus({ kind: "error", msg: getAuthErrorMessage(err) });
     }
   }
 
@@ -71,7 +65,7 @@ export default function Settings() {
     <>
       <PageMeta
         title="Account settings | Lukeflow"
-        description="Manage your Lukeflow account security and email addresses."
+        description="Manage your Lukeflow account security."
       />
 
       <div className="mx-auto max-w-3xl">
@@ -80,68 +74,47 @@ export default function Settings() {
             Account settings
           </h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Manage your email addresses, password, and account.
+            Manage your email, password, and account.
           </p>
         </div>
 
-        {/* Email addresses */}
+        {/* Email */}
         <section className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
           <h2 className="mb-4 text-base font-semibold text-gray-800 dark:text-white/90">
-            Email addresses
+            Email address
           </h2>
-          <ul className="flex flex-col divide-y divide-gray-100 dark:divide-gray-800">
-            {user.emailAddresses.map((e) => {
-              const isPrimary = e.id === user.primaryEmailAddressId;
-              const verified = e.verification?.status === "verified";
-              return (
-                <li key={e.id} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
-                  <span className="text-sm text-gray-700 dark:text-gray-300">{e.emailAddress}</span>
-                  <span className="flex items-center gap-2">
-                    {isPrimary && (
-                      <span className="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
-                        Primary
-                      </span>
-                    )}
-                    <span
-                      className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                        verified
-                          ? "bg-success-50 text-success-600 dark:bg-success-500/10 dark:text-success-400"
-                          : "bg-warning-50 text-warning-600 dark:bg-warning-500/10 dark:text-warning-400"
-                      }`}
-                    >
-                      {verified ? "Verified" : "Unverified"}
-                    </span>
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-700 dark:text-gray-300">{user.email}</span>
+            <span
+              className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                user.emailVerified
+                  ? "bg-success-50 text-success-600 dark:bg-success-500/10 dark:text-success-400"
+                  : "bg-warning-50 text-warning-600 dark:bg-warning-500/10 dark:text-warning-400"
+              }`}
+            >
+              {user.emailVerified ? "Verified" : "Unverified"}
+            </span>
+          </div>
         </section>
 
         {/* Password */}
         <section className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
           <h2 className="mb-1 text-base font-semibold text-gray-800 dark:text-white/90">
-            {hasPassword ? "Change password" : "Set a password"}
+            Change password
           </h2>
-          <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
-            {hasPassword
-              ? "Use at least 8 characters."
-              : "You signed in with a social account. Set a password to also sign in with email."}
-          </p>
+          <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">Use at least 10 characters.</p>
 
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-            {hasPassword && (
-              <div className="sm:col-span-2">
-                <Label htmlFor="current">Current password</Label>
-                <Input
-                  id="current"
-                  type="password"
-                  value={current}
-                  onChange={(e) => setCurrent(e.target.value)}
-                  placeholder="••••••••"
-                />
-              </div>
-            )}
+            <div className="sm:col-span-2">
+              <Label htmlFor="current">Current password</Label>
+              <Input
+                id="current"
+                type="password"
+                value={current}
+                onChange={(e) => setCurrent(e.target.value)}
+                placeholder="••••••••"
+              />
+            </div>
             <div>
               <Label htmlFor="next">New password</Label>
               <Input
@@ -164,23 +137,9 @@ export default function Settings() {
             </div>
           </div>
 
-          <label className="mt-4 flex cursor-pointer items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-            <input
-              type="checkbox"
-              checked={signOutOthers}
-              onChange={(e) => setSignOutOthers(e.target.checked)}
-              className="size-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500/20 dark:border-gray-700 dark:bg-gray-900"
-            />
-            Sign out of all other devices
-          </label>
-
           <div className="mt-6 flex items-center gap-3 border-t border-gray-100 pt-5 dark:border-gray-800">
-            <Button
-              size="sm"
-              disabled={!next || pwStatus.kind === "saving"}
-              onClick={handlePassword}
-            >
-              {pwStatus.kind === "saving" ? "Saving…" : hasPassword ? "Update password" : "Set password"}
+            <Button size="sm" disabled={!next || pwStatus.kind === "saving"} onClick={handlePassword}>
+              {pwStatus.kind === "saving" ? "Saving…" : "Update password"}
             </Button>
             {pwStatus.kind === "ok" && (
               <span className="text-sm text-success-600 dark:text-success-400">{pwStatus.msg}</span>
@@ -197,8 +156,8 @@ export default function Settings() {
             Delete account
           </h2>
           <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
-            Permanently delete your account and all associated data. This cannot be undone.
-            Type <span className="font-mono font-medium text-gray-800 dark:text-gray-200">DELETE</span> to confirm.
+            Permanently delete your account. This cannot be undone. Type{" "}
+            <span className="font-mono font-medium text-gray-800 dark:text-gray-200">DELETE</span> to confirm.
           </p>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="sm:w-64">
@@ -223,9 +182,4 @@ export default function Settings() {
       </div>
     </>
   );
-}
-
-function errMsg(err: unknown): string {
-  const e = err as { errors?: { message?: string; longMessage?: string }[]; message?: string };
-  return e?.errors?.[0]?.longMessage || e?.errors?.[0]?.message || e?.message || "Something went wrong.";
 }
