@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState } from "react";
 import { useNavigate } from "react-router";
-import { useUser } from "../../context/AuthContext";
+import { useAuth, useUser } from "../../context/AuthContext";
+import { canWrite, FORMS } from "../../lib/capabilities";
 import PageMeta from "../../components/common/PageMeta";
 import { Modal } from "../../components/ui/modal";
 import Button from "../../components/ui/button/Button";
@@ -27,6 +28,9 @@ function formatUpdated(ts: number): string {
 export default function FormsList() {
   const navigate = useNavigate();
   const { user } = useUser();
+  const { session } = useAuth();
+  // read → view-only (no create/edit/delete); read-write → full control.
+  const canEdit = canWrite(session, FORMS);
   const { userId, forms, trashed, createForm, clone, archive, softDelete, restore, purge, refresh } = useForms();
   const me = user?.fullName || user?.firstName || user?.email || "You";
   const who = (id: string) => (id && id === userId ? me : id ? `${id.slice(0, 10)}…` : "—");
@@ -62,20 +66,27 @@ export default function FormsList() {
 
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">
+          <h1 className="flex items-center gap-2 text-xl font-semibold text-gray-800 dark:text-white/90">
             Forms
+            {!canEdit && (
+              <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:bg-white/10 dark:text-gray-400">
+                View only
+              </span>
+            )}
           </h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Design forms with the drag-and-drop builder.
+            {canEdit
+              ? "Design forms with the drag-and-drop builder."
+              : "You have read-only access to forms. Ask an org owner for edit access."}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {trashed.length > 0 && (
+          {canEdit && trashed.length > 0 && (
             <Button variant="outline" size="sm" onClick={() => setShowTrash((v) => !v)} startIcon={showTrash ? undefined : <TrashBinIcon className="size-4" />}>
               {showTrash ? "Back to forms" : `Trash (${trashed.length})`}
             </Button>
           )}
-          {hasForms && !showTrash && (
+          {canEdit && hasForms && !showTrash && (
             <Button startIcon={<PlusIcon className="size-4" />} onClick={openModal}>
               Create form
             </Button>
@@ -135,14 +146,16 @@ export default function FormsList() {
                   <td className="px-5 py-3 text-gray-500 dark:text-gray-400">{formatUpdated(form.updatedAt)}</td>
                   <td className="px-5 py-3 text-gray-500 dark:text-gray-400">{who(form.updatedBy)}</td>
                   <td className="px-5 py-3">
-                    <div className="flex items-center justify-end gap-0.5 opacity-0 transition group-hover:opacity-100">
-                      {form.artifacts.length > 0 && (
-                        <button type="button" aria-label="Version history" onClick={(e) => { e.stopPropagation(); setHistoryForm(form); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-brand-500 dark:hover:bg-gray-800"><TimeIcon className="size-4" /></button>
-                      )}
-                      <button type="button" aria-label="Duplicate" onClick={(e) => { e.stopPropagation(); clone(form.id); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800"><CopyIcon className="size-4" /></button>
-                      <button type="button" aria-label={form.status === "archived" ? "Unarchive" : "Archive"} onClick={(e) => { e.stopPropagation(); archive(form.id, form.status !== "archived"); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-amber-500 dark:hover:bg-gray-800"><BoxIcon className="size-4" /></button>
-                      <button type="button" aria-label="Delete" onClick={(e) => { e.stopPropagation(); softDelete(form.id); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-error-500 dark:hover:bg-gray-800"><TrashBinIcon className="size-4" /></button>
-                    </div>
+                    {canEdit && (
+                      <div className="flex items-center justify-end gap-0.5 opacity-0 transition group-hover:opacity-100">
+                        {form.artifacts.length > 0 && (
+                          <button type="button" aria-label="Version history" onClick={(e) => { e.stopPropagation(); setHistoryForm(form); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-brand-500 dark:hover:bg-gray-800"><TimeIcon className="size-4" /></button>
+                        )}
+                        <button type="button" aria-label="Duplicate" onClick={(e) => { e.stopPropagation(); clone(form.id); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800"><CopyIcon className="size-4" /></button>
+                        <button type="button" aria-label={form.status === "archived" ? "Unarchive" : "Archive"} onClick={(e) => { e.stopPropagation(); archive(form.id, form.status !== "archived"); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-amber-500 dark:hover:bg-gray-800"><BoxIcon className="size-4" /></button>
+                        <button type="button" aria-label="Delete" onClick={(e) => { e.stopPropagation(); softDelete(form.id); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-error-500 dark:hover:bg-gray-800"><TrashBinIcon className="size-4" /></button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -159,14 +172,17 @@ export default function FormsList() {
             No forms yet
           </h2>
           <p className="mt-1 max-w-sm text-sm text-gray-500 dark:text-gray-400">
-            Create your first form and start building it with the drag-and-drop
-            designer.
+            {canEdit
+              ? "Create your first form and start building it with the drag-and-drop designer."
+              : "There are no forms to view yet, and you have read-only access."}
           </p>
-          <div className="mt-6">
-            <Button startIcon={<PlusIcon className="size-4" />} onClick={openModal}>
-              Create form
-            </Button>
-          </div>
+          {canEdit && (
+            <div className="mt-6">
+              <Button startIcon={<PlusIcon className="size-4" />} onClick={openModal}>
+                Create form
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

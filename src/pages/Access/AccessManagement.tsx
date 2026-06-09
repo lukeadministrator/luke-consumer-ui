@@ -14,6 +14,12 @@ import PageMeta from "../../components/common/PageMeta";
 import Label from "../../components/form/Label";
 import Input from "../../components/form/input/InputField";
 import Button from "../../components/ui/button/Button";
+import {
+  LEVEL_LABEL,
+  TIER_BADGE,
+  TIER_LABEL,
+  type CapabilityLevel,
+} from "../../lib/capabilities";
 
 // Editable role rows: dimension (as returned in member.roles) → the engine role
 // group we PUT to. Owner (tenant-admin) is guarded server-side so the last owner
@@ -56,6 +62,76 @@ const fullName = (m: OrgMember) =>
 
 const groupName = (id: string, groups: OrgGroup[]) =>
   groups.find((g) => g.id === id)?.name ?? (id.split(":").slice(1).join(":") || id);
+
+/** Pricing/availability tier chip (Free / Standard / Premium). */
+function TierBadge({ tier }: { tier?: string }) {
+  if (!tier) return null;
+  const klass = TIER_BADGE[tier] ?? "bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-gray-400";
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${klass}`}>
+      {TIER_LABEL[tier] ?? tier}
+    </span>
+  );
+}
+
+/** Colour for a capability level chip in the read-only "My access" view. */
+const LEVEL_BADGE: Record<CapabilityLevel, string> = {
+  none: "bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-gray-400",
+  read: "bg-blue-50 text-blue-600 dark:bg-blue-500/15",
+  "read-write": "bg-success-50 text-success-600 dark:bg-success-500/15",
+};
+
+/**
+ * "My access" — the signed-in user's own effective capabilities (from the session)
+ * joined with the catalog for friendly names and pricing tiers. Read-only; visible
+ * to every member, not just owners.
+ */
+function MyAccessCard({
+  capabilities,
+  catalog,
+}: {
+  capabilities: Record<string, string>;
+  catalog: CapabilityCatalogItem[];
+}) {
+  const codes = Object.keys(capabilities);
+  const meta = (code: string) => catalog.find((c) => c.code === code);
+
+  return (
+    <section className={card}>
+      <h2 className="mb-1 text-base font-semibold text-gray-800 dark:text-white/90">My access</h2>
+      <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+        The capabilities granted to you in this organization.
+      </p>
+      {codes.length === 0 ? (
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          You don't have any capabilities granted yet. Ask an org owner to grant access.
+        </p>
+      ) : (
+        <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+          {codes.map((code) => {
+            const raw = capabilities[code];
+            const level: CapabilityLevel =
+              raw === "read" || raw === "read-write" ? raw : "none";
+            const m = meta(code);
+            return (
+              <li key={code} className="flex items-center justify-between gap-3 py-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                    {m?.name ?? code}
+                  </span>
+                  <TierBadge tier={m?.tier} />
+                </div>
+                <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${LEVEL_BADGE[level]}`}>
+                  {LEVEL_LABEL[level]}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
 
 /* ─────────────────────────── Authentication tab ─────────────────────────── */
 
@@ -295,7 +371,10 @@ function MemberRow({
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {capabilities.map((c) => (
                   <div key={c.code} className="flex items-center justify-between gap-2">
-                    <span className="text-sm text-gray-700 dark:text-gray-300">{c.name}</span>
+                    <span className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                      {c.name}
+                      <TierBadge tier={c.tier} />
+                    </span>
                     <LevelSelect
                       value={(grants[c.code] as RoleLevel) ?? "none"}
                       disabled={busy}
@@ -502,8 +581,24 @@ function AuthorizationTab({ tenant }: { tenant: string }) {
 export default function AccessManagement() {
   const { session } = useAuth();
   const [tab, setTab] = useState<"auth" | "authz">("auth");
+  const [catalog, setCatalog] = useState<CapabilityCatalogItem[]>([]);
 
   const tenant = session?.tenant ?? null;
+
+  // Catalog is used to label/tier the "My access" capabilities. It's a best-effort
+  // read — non-owners may not be allowed to list it, in which case we fall back to
+  // showing the raw capability codes without a tier.
+  useEffect(() => {
+    if (!tenant) return;
+    let active = true;
+    api
+      .listCapabilities(tenant)
+      .then((c) => active && setCatalog(Array.isArray(c) ? c : []))
+      .catch(() => active && setCatalog([]));
+    return () => {
+      active = false;
+    };
+  }, [tenant]);
 
   return (
     <>
@@ -521,6 +616,13 @@ export default function AccessManagement() {
             Invite teammates, add them to your organization, and manage roles, groups, and capabilities.
           </p>
         </div>
+
+        {/* Everyone sees their own access; only owners get the management tabs below. */}
+        {session && tenant && (
+          <div className="mb-6">
+            <MyAccessCard capabilities={session.capabilities ?? {}} catalog={catalog} />
+          </div>
+        )}
 
         {!session?.tenantAdmin || !tenant ? (
           <div className={card}>

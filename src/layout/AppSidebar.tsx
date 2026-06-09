@@ -4,6 +4,7 @@ import { Link, useLocation } from "react-router";
 import { ChevronDownIcon, GridIcon, HorizontaLDots, ListIcon, LockIcon, MailIcon, PhoneIcon } from "../icons";
 import { useSidebar } from "../context/SidebarContext";
 import { useAuth } from "../context/AuthContext";
+import { canRead, FORMS } from "../lib/capabilities";
 
 type NavItem = {
   name: string;
@@ -12,27 +13,13 @@ type NavItem = {
   subItems?: { name: string; path: string; pro?: boolean; new?: boolean }[];
 };
 
+const DASHBOARD_ITEM: NavItem = { icon: <GridIcon />, name: "Dashboard", path: "/dashboard" };
+const FORMS_ITEM: NavItem = { icon: <ListIcon />, name: "Forms", path: "/forms" };
 const navItems: NavItem[] = [
-  {
-    icon: <GridIcon />,
-    name: "Dashboard",
-    path: "/dashboard",
-  },
-  {
-    icon: <ListIcon />,
-    name: "Forms",
-    path: "/forms",
-  },
-  {
-    icon: <MailIcon />,
-    name: "Email",
-    path: "/email",
-  },
-  {
-    icon: <PhoneIcon />,
-    name: "Phone",
-    path: "/phone",
-  },
+  DASHBOARD_ITEM,
+  FORMS_ITEM,
+  { icon: <MailIcon />, name: "Email", path: "/email" },
+  { icon: <PhoneIcon />, name: "Phone", path: "/phone" },
 ];
 
 const AppSidebar: React.FC = () => {
@@ -40,10 +27,14 @@ const AppSidebar: React.FC = () => {
   const { session } = useAuth();
   const location = useLocation();
 
-  // Org owners get the Auth & Access admin page; everyone else doesn't see it.
-  const items: NavItem[] = session?.tenantAdmin
-    ? [...navItems, { icon: <LockIcon />, name: "Auth & Access", path: "/access" }]
-    : navItems;
+  // Forms is hidden unless the user has at least read access to the FORMS capability.
+  // Org owners additionally get the Auth & Access admin page.
+  const items: NavItem[] = navItems.filter(
+    (item) => item.path !== "/forms" || canRead(session, FORMS),
+  );
+  if (session?.tenantAdmin) {
+    items.push({ icon: <LockIcon />, name: "Auth & Access", path: "/access" });
+  }
 
   const [openSubmenu, setOpenSubmenu] = useState<{
     type: "main" | "others";

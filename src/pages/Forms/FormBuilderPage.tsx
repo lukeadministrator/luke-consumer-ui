@@ -23,6 +23,8 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 import PageMeta from "../../components/common/PageMeta";
 import Button from "../../components/ui/button/Button";
+import { useAuth } from "../../context/AuthContext";
+import { canWrite, FORMS } from "../../lib/capabilities";
 import Tooltip from "../../components/ui/tooltip/Tooltip";
 import { Modal } from "../../components/ui/modal";
 import { GripVertical } from "lucide-react";
@@ -149,6 +151,10 @@ const STATUS_BADGE: Record<FormStatus, string> = {
 
 function Designer({ userId, formId, form, reload }: { userId: string; formId: string; form: StoredForm; reload: () => void }) {
   const navigate = useNavigate();
+  const { session } = useAuth();
+  // read → view-only: the canvas is browsable but nothing is persisted and the
+  // write actions are hidden. read-write → full editing.
+  const canEdit = canWrite(session, FORMS);
   const [activeEntityId, setActiveEntityId] = useState<string | null>(null);
   const [saved, setSaved] = useState(true);
   const [dirty, setDirty] = useState(false);
@@ -183,6 +189,7 @@ function Designer({ userId, formId, form, reload }: { userId: string; formId: st
   const order = schema.root;
 
   useEffect(() => {
+    if (!canEdit) return; // view-only: never persist edits.
     return builderStore.subscribe((data) => {
       setSaved(false);
       setDirty(true);
@@ -192,7 +199,7 @@ function Designer({ userId, formId, form, reload }: { userId: string; formId: st
         setSaved(true);
       }, 600);
     });
-  }, [builderStore, userId, formId]);
+  }, [builderStore, userId, formId, canEdit]);
 
   useEffect(() => () => { if (saveTimer.current) window.clearTimeout(saveTimer.current); }, []);
 
@@ -385,15 +392,26 @@ function Designer({ userId, formId, form, reload }: { userId: string; formId: st
           </p>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <span className="mr-1 hidden text-xs text-gray-400 sm:inline">{saved ? "Draft saved" : "Saving…"}</span>
-          {dirty && version > 0 && (
-            <Tooltip content="Discard draft edits and revert to the live version."><Button size="sm" variant="outline" onClick={handleDiscard}>Discard</Button></Tooltip>
-          )}
-          <Tooltip content="Preview & test the form — conditions, calculations and validation run live."><Button size="sm" variant="outline" onClick={openPreview} startIcon={<EyeIcon className="size-4" />}>Preview</Button></Tooltip>
-          <Tooltip content="Save your progress as a draft. Drafts keep your edits so you can continue working, but can't be used in workflows yet."><Button size="sm" variant="outline" onClick={flushSave} startIcon={<CheckLineIcon className="size-4" />}>Save</Button></Tooltip>
-          <Tooltip content="Check in a version as an artifact that workflows can use. Your draft stays editable for further changes."><Button size="sm" variant="outline" onClick={handleCheckIn} startIcon={<PaperPlaneIcon className="size-4" />}>Check in</Button></Tooltip>
-          {version > 0 && (
-            <Tooltip content="Make the latest checked-in version the live one that workflows use."><Button size="sm" onClick={handlePublish} disabled={publishedVersion === version}>{publishedVersion === version ? "Published" : `Publish v${version}`}</Button></Tooltip>
+          {!canEdit ? (
+            <>
+              <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:bg-white/10 dark:text-gray-400">
+                View only
+              </span>
+              <Tooltip content="Preview & test the form — conditions, calculations and validation run live."><Button size="sm" variant="outline" onClick={openPreview} startIcon={<EyeIcon className="size-4" />}>Preview</Button></Tooltip>
+            </>
+          ) : (
+            <>
+              <span className="mr-1 hidden text-xs text-gray-400 sm:inline">{saved ? "Draft saved" : "Saving…"}</span>
+              {dirty && version > 0 && (
+                <Tooltip content="Discard draft edits and revert to the live version."><Button size="sm" variant="outline" onClick={handleDiscard}>Discard</Button></Tooltip>
+              )}
+              <Tooltip content="Preview & test the form — conditions, calculations and validation run live."><Button size="sm" variant="outline" onClick={openPreview} startIcon={<EyeIcon className="size-4" />}>Preview</Button></Tooltip>
+              <Tooltip content="Save your progress as a draft. Drafts keep your edits so you can continue working, but can't be used in workflows yet."><Button size="sm" variant="outline" onClick={flushSave} startIcon={<CheckLineIcon className="size-4" />}>Save</Button></Tooltip>
+              <Tooltip content="Check in a version as an artifact that workflows can use. Your draft stays editable for further changes."><Button size="sm" variant="outline" onClick={handleCheckIn} startIcon={<PaperPlaneIcon className="size-4" />}>Check in</Button></Tooltip>
+              {version > 0 && (
+                <Tooltip content="Make the latest checked-in version the live one that workflows use."><Button size="sm" onClick={handlePublish} disabled={publishedVersion === version}>{publishedVersion === version ? "Published" : `Publish v${version}`}</Button></Tooltip>
+              )}
+            </>
           )}
         </div>
       </div>

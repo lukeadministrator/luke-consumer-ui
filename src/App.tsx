@@ -14,13 +14,15 @@ import Phone from "./pages/Phone/Phone";
 import Profile from "./pages/Account/Profile";
 import Settings from "./pages/Account/Settings";
 import Support from "./pages/Support/Support";
-import CreateOrganization from "./pages/CreateOrganization";
 import AccessManagement from "./pages/Access/AccessManagement";
 
 // Code-split the form designer (builder + zod) to its own route chunk.
 const FormBuilderPage = lazy(() => import("./pages/Forms/FormBuilderPage"));
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import GuestRoute from "./components/auth/GuestRoute";
+import OnboardingGate from "./components/auth/OnboardingGate";
+import CapabilityRoute from "./components/auth/CapabilityRoute";
+import { FORMS } from "./lib/capabilities";
 
 if (!import.meta.env.VITE_AUTH_API_URL) {
   throw new Error(
@@ -36,12 +38,11 @@ export default function App() {
         <Routes>
           {/* Protected routes */}
           <Route element={<ProtectedRoute />}>
-            {/* Landing after login: full-screen onboarding, no app shell */}
-            <Route index path="/" element={<CreateOrganization />} />
+            {/* Landing after login: onboarding for new users, app for provisioned. */}
+            <Route index path="/" element={<OnboardingGate />} />
 
             <Route element={<AppLayout />}>
               <Route path="/dashboard" element={<Home />} />
-              <Route path="/forms" element={<FormsList />} />
               <Route path="/email" element={<Email />} />
               <Route path="/phone" element={<Phone />} />
               <Route path="/account/profile" element={<Profile />} />
@@ -49,21 +50,25 @@ export default function App() {
               <Route path="/access" element={<AccessManagement />} />
               <Route path="/support" element={<Support />} />
 
-              {/* Form designer — lives in the normal dashboard shell. */}
-              <Route
-                path="/forms/:id"
-                element={
-                  <Suspense
-                    fallback={
-                      <div className="flex h-[60vh] items-center justify-center text-sm text-gray-400">
-                        Loading designer…
-                      </div>
-                    }
-                  >
-                    <FormBuilderPage />
-                  </Suspense>
-                }
-              />
+              {/* Forms — gated behind the FORMS capability (read to view, write to edit). */}
+              <Route element={<CapabilityRoute code={FORMS} />}>
+                <Route path="/forms" element={<FormsList />} />
+                {/* Form designer — lives in the normal dashboard shell. */}
+                <Route
+                  path="/forms/:id"
+                  element={
+                    <Suspense
+                      fallback={
+                        <div className="flex h-[60vh] items-center justify-center text-sm text-gray-400">
+                          Loading designer…
+                        </div>
+                      }
+                    >
+                      <FormBuilderPage />
+                    </Suspense>
+                  }
+                />
+              </Route>
             </Route>
           </Route>
 
