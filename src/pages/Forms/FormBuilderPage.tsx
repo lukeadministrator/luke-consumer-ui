@@ -463,8 +463,9 @@ function Designer({ tenant, formId, form, reload }: { tenant: string; formId: st
       </div>
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setDragLabel(null)}>
-        <div className="grid h-[calc(100vh-200px)] min-h-[520px] grid-cols-1 gap-4 lg:grid-cols-[220px_1fr]">
-          {/* Palette */}
+        <div className={`grid h-[calc(100vh-200px)] min-h-[520px] grid-cols-1 gap-4 ${canEdit ? "lg:grid-cols-[220px_1fr]" : ""}`}>
+          {/* Palette — only when the user can edit. */}
+          {canEdit && (
           <div className="overflow-y-auto rounded-2xl border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-white/[0.03]">
             <input
               type="search"
@@ -491,14 +492,16 @@ function Designer({ tenant, formId, form, reload }: { tenant: string; formId: st
               ));
             })()}
           </div>
+          )}
 
-          {/* Canvas */}
+          {/* Canvas — non-interactive when the user only has read access. */}
           <div className="overflow-y-auto rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+            <div className={canEdit ? "" : "pointer-events-none select-none"}>
             <Canvas>
               {order.length === 0 ? (
                 <div className="flex h-full min-h-[400px] flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 py-16 text-center dark:border-gray-700">
                   <p className="text-sm font-medium text-gray-700 dark:text-gray-300">No fields yet</p>
-                  <p className="mt-1 text-sm text-gray-400">Drag a field from the left to start building.</p>
+                  <p className="mt-1 text-sm text-gray-400">{canEdit ? "Drag a field from the left to start building." : "This form has no fields."}</p>
                 </div>
               ) : (
                 <SortableContext items={Object.keys(schema.entities)} strategy={verticalListSortingStrategy}>
@@ -521,6 +524,7 @@ function Designer({ tenant, formId, form, reload }: { tenant: string; formId: st
                 </SortableContext>
               )}
             </Canvas>
+            </div>
           </div>
         </div>
 
@@ -543,15 +547,15 @@ function Designer({ tenant, formId, form, reload }: { tenant: string; formId: st
           </div>
           <div className="mb-4">
             <Label>Form name</Label>
-            <Input value={formName} onChange={(e) => setFormName(e.target.value)} />
+            <Input value={formName} onChange={(e) => setFormName(e.target.value)} disabled={!canEdit} />
           </div>
           <div className="mb-6">
             <Label>Description</Label>
-            <Input value={formDesc} onChange={(e) => setFormDesc(e.target.value)} placeholder="Optional" />
+            <Input value={formDesc} onChange={(e) => setFormDesc(e.target.value)} placeholder="Optional" disabled={!canEdit} />
           </div>
           <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setFormSettingsOpen(false)}>Cancel</Button>
-            <Button onClick={saveFormSettings} disabled={!formName.trim()}>Save</Button>
+            <Button variant="outline" onClick={() => setFormSettingsOpen(false)}>{canEdit ? "Cancel" : "Close"}</Button>
+            {canEdit && <Button onClick={saveFormSettings} disabled={!formName.trim()}>Save</Button>}
           </div>
 
           {auditEvents.length > 0 && (
@@ -611,11 +615,17 @@ function Designer({ tenant, formId, form, reload }: { tenant: string; formId: st
 export default function FormBuilderPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { session } = useAuth();
+  const { session, refreshSession } = useAuth();
   const tenant = session?.tenant ?? null;
   const [reloadKey, setReloadKey] = useState(0);
   const [form, setForm] = useState<StoredForm | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Re-read the session on entry so the editor reflects the caller's *current*
+  // FORMS access (a role change made elsewhere won't be in the bootstrap session).
+  useEffect(() => {
+    void refreshSession();
+  }, [refreshSession]);
 
   useEffect(() => {
     if (!tenant || !id) return;
