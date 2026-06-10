@@ -43,6 +43,19 @@ export default function FormsList() {
   const [historyVersions, setHistoryVersions] = useState<FormArtifact[]>([]);
   const [previewSchema, setPreviewSchema] = useState<string | null>(null);
   const [showTrash, setShowTrash] = useState(false);
+  const [purgeTarget, setPurgeTarget] = useState<StoredForm | null>(null);
+  const [purging, setPurging] = useState(false);
+
+  const confirmPurge = async () => {
+    if (!purgeTarget || purging) return;
+    setPurging(true);
+    try {
+      await purge(purgeTarget.id);
+      setPurgeTarget(null);
+    } finally {
+      setPurging(false);
+    }
+  };
 
   // Load checked-in versions whenever the history modal opens for a form.
   useEffect(() => {
@@ -130,7 +143,7 @@ export default function FormsList() {
               </div>
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" onClick={() => restore(form.id)}>Restore</Button>
-                <Button size="sm" variant="outline" onClick={() => { if (window.confirm(`Permanently delete "${form.name}"?`)) purge(form.id); }}>Delete forever</Button>
+                <Button size="sm" variant="outline" onClick={() => setPurgeTarget(form)}>Delete forever</Button>
               </div>
             </div>
           ))}
@@ -290,6 +303,25 @@ export default function FormsList() {
               );
             })}
           </ul>
+        </div>
+      </Modal>
+
+      {/* Delete-forever confirmation */}
+      <Modal isOpen={!!purgeTarget} onClose={() => (purging ? undefined : setPurgeTarget(null))} className="mx-4 w-full max-w-[440px]">
+        <div className="p-6 sm:p-8">
+          <h2 className="mb-2 text-lg font-semibold text-gray-800 dark:text-white/90">Delete forever?</h2>
+          <p className="mb-6 text-sm text-gray-500 dark:text-gray-400">
+            <span className="font-medium text-gray-700 dark:text-gray-200">{purgeTarget?.name}</span> and all its versions
+            will be permanently deleted. This can't be undone.
+          </p>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setPurgeTarget(null)} disabled={purging}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={confirmPurge} disabled={purging}>
+              {purging ? "Deleting…" : "Delete forever"}
+            </Button>
+          </div>
         </div>
       </Modal>
 
