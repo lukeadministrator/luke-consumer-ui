@@ -31,16 +31,19 @@ import { GripVertical } from "lucide-react";
 import { ChevronLeftIcon, CheckLineIcon, PaperPlaneIcon, TrashBinIcon, AngleUpIcon, AngleDownIcon, EyeIcon, PencilIcon } from "../../icons";
 import {
   checkIn,
+  checkout,
   discardDraft,
+  getAudit,
+  getForm,
   latestVersion,
   publishVersion,
-  readForm,
+  release,
   saveDraft,
-  updateFormMeta,
-  useUserId,
+  updateMeta,
+  type AuditEvent,
   type FormStatus,
   type StoredForm,
-} from "../../lib/formsStore";
+} from "../../lib/formsApi";
 import Label from "../../components/form/Label";
 import Input from "../../components/form/input/InputField";
 import { formBuilder, PALETTE_GROUPS, CONTAINER_TYPES, type PaletteItem } from "../../components/formBuilder/formBuilder";
@@ -149,12 +152,17 @@ const STATUS_BADGE: Record<FormStatus, string> = {
   archived: "bg-amber-50 text-amber-600 dark:bg-amber-500/15",
 };
 
-function Designer({ userId, formId, form, reload }: { userId: string; formId: string; form: StoredForm; reload: () => void }) {
+function Designer({ tenant, formId, form, reload }: { tenant: string; formId: string; form: StoredForm; reload: () => void }) {
   const navigate = useNavigate();
   const { session } = useAuth();
   // read → view-only: the canvas is browsable but nothing is persisted and the
   // write actions are hidden. read-write → full editing.
   const canEdit = canWrite(session, FORMS);
+  const me = session?.userId ?? null;
+  // Advisory edit-lock: who (if anyone other than me) currently holds it.
+  const [lockedByOther, setLockedByOther] = useState<string | null>(
+    form.lockedBy && form.lockedBy !== me ? form.lockedBy : null,
+  );
   const [activeEntityId, setActiveEntityId] = useState<string | null>(null);
   const [saved, setSaved] = useState(true);
   const [dirty, setDirty] = useState(false);
@@ -169,7 +177,18 @@ function Designer({ userId, formId, form, reload }: { userId: string; formId: st
   const [formName, setFormName] = useState(form.name);
   const [formDesc, setFormDesc] = useState(form.description ?? "");
   const [paletteQuery, setPaletteQuery] = useState("");
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const saveTimer = useRef<number | null>(null);
+
+  // Load the activity feed when the form-settings modal opens.
+  useEffect(() => {
+    if (!formSettingsOpen) return;
+    let active = true;
+    getAudit(tenant, formId)
+      .then((a) => active && setAuditEvents(a))
+      .catch(() => active && setAuditEvents([]));
+    return () => { active = false; };
+  }, [formSettingsOpen, tenant, formId]);
 
   const initialSchema = useMemo(() => parseSchema(form.schema), [form.schema]);
 
@@ -188,6 +207,25 @@ function Designer({ userId, formId, form, reload }: { userId: string; formId: st
   const { schema } = useBuilderStoreData(builderStore);
   const order = schema.root;
 
+  // Acquire the advisory edit lock on open; release it when leaving. A 409 means
+  // someone else holds it — we surface a banner but still allow editing.
+  useEffect(() => {
+    if (!canEdit) return;
+    let active = true;
+    checkout(tenant, formId)
+      .then(() => active && setLockedByOther(null))
+      .catch(() => {}); // 409 → banner already reflects form.lockedBy
+    return () => {
+      active = false;
+      void release(tenant, formId);
+    };
+  }, [tenant, formId, canEdit]);
+
+  const takeOver = async () => {
+    await checkout(tenant, formId, true);
+    setLockedByOther(null);
+  };
+
   useEffect(() => {
     if (!canEdit) return; // view-only: never persist edits.
     return builderStore.subscribe((data) => {
@@ -195,23 +233,22 @@ function Designer({ userId, formId, form, reload }: { userId: string; formId: st
       setDirty(true);
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
       saveTimer.current = window.setTimeout(() => {
-        saveDraft(userId, formId, JSON.stringify(data.schema));
-        setSaved(true);
+        void saveDraft(tenant, formId, JSON.stringify(data.schema)).then(() => setSaved(true));
       }, 600);
     });
-  }, [builderStore, userId, formId, canEdit]);
+  }, [builderStore, tenant, formId, canEdit]);
 
   useEffect(() => () => { if (saveTimer.current) window.clearTimeout(saveTimer.current); }, []);
 
-  const flushSave = () => {
+  const flushSave = async () => {
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    saveDraft(userId, formId, JSON.stringify(builderStore.getSchema()));
+    await saveDraft(tenant, formId, JSON.stringify(builderStore.getSchema()));
     setSaved(true);
   };
 
-  const handleCheckIn = () => {
+  const handleCheckIn = async () => {
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    const artifact = checkIn(userId, formId, JSON.stringify(builderStore.getSchema()));
+    const artifact = await checkIn(tenant, formId, JSON.stringify(builderStore.getSchema()));
     if (artifact) {
       setVersion(artifact.version);
       if (publishedVersion === undefined) setPublishedVersion(artifact.version);
@@ -221,16 +258,16 @@ function Designer({ userId, formId, form, reload }: { userId: string; formId: st
     }
   };
 
-  const handlePublish = () => {
-    publishVersion(userId, formId, version);
+  const handlePublish = async () => {
+    await publishVersion(tenant, formId, version);
     setPublishedVersion(version);
     setStatus("published");
   };
 
-  const handleDiscard = () => {
+  const handleDiscard = async () => {
     if (!window.confirm("Discard draft changes and revert to the published version?")) return;
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    discardDraft(userId, formId);
+    await discardDraft(tenant, formId);
     reload();
   };
 
@@ -360,16 +397,25 @@ function Designer({ userId, formId, form, reload }: { userId: string; formId: st
     setPreviewOpen(true);
   };
 
-  const saveFormSettings = () => {
+  const saveFormSettings = async () => {
     const name = formName.trim() || form.name;
     setFormName(name);
-    updateFormMeta(userId, formId, { name, description: formDesc });
+    await updateMeta(tenant, formId, { name, description: formDesc });
     setFormSettingsOpen(false);
   };
 
   return (
     <>
       <PageMeta title={`${form.name} | Lukeflow`} description="Design your form in Lukeflow." />
+
+      {canEdit && lockedByOther && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-400">
+          <span>
+            This form is being edited by <span className="font-medium">{lockedByOther.replace(/^workos:/, "")}</span>. Your changes may overwrite theirs.
+          </span>
+          <Button size="sm" variant="outline" onClick={takeOver}>Take over</Button>
+        </div>
+      )}
 
       {/* Toolbar */}
       <div className="mb-5 flex flex-wrap items-center gap-3">
@@ -508,11 +554,11 @@ function Designer({ userId, formId, form, reload }: { userId: string; formId: st
             <Button onClick={saveFormSettings} disabled={!formName.trim()}>Save</Button>
           </div>
 
-          {form.audit.length > 0 && (
+          {auditEvents.length > 0 && (
             <div className="mt-6 border-t border-gray-100 pt-4 dark:border-gray-800">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Activity</p>
               <ul className="max-h-40 space-y-1 overflow-y-auto">
-                {form.audit.slice().reverse().map((ev, i) => (
+                {auditEvents.map((ev, i) => (
                   <li key={i} className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
                     <span><span className="font-medium text-gray-700 dark:text-gray-300">{ev.action.replace(/_/g, " ")}</span>{ev.detail ? ` ${ev.detail}` : ""}</span>
                     <span className="text-gray-400">{new Date(ev.at).toLocaleString()}</span>
@@ -565,16 +611,26 @@ function Designer({ userId, formId, form, reload }: { userId: string; formId: st
 export default function FormBuilderPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const userId = useUserId();
+  const { session } = useAuth();
+  const tenant = session?.tenant ?? null;
   const [reloadKey, setReloadKey] = useState(0);
-
-  const form = useMemo(() => (userId && id ? readForm(userId, id) : undefined), [userId, id, reloadKey]);
+  const [form, setForm] = useState<StoredForm | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (userId && id && !readForm(userId, id)) navigate("/forms", { replace: true });
-  }, [userId, id, navigate]);
+    if (!tenant || !id) return;
+    let active = true;
+    setLoading(true);
+    getForm(tenant, id)
+      .then((f) => { if (active) { setForm(f); setLoading(false); } })
+      .catch(() => { if (active) { setLoading(false); navigate("/forms", { replace: true }); } });
+    return () => { active = false; };
+  }, [tenant, id, reloadKey, navigate]);
 
-  if (!userId || !id || !form) return null;
+  if (loading) {
+    return <div className="flex h-[60vh] items-center justify-center text-sm text-gray-400">Loading form…</div>;
+  }
+  if (!tenant || !id || !form) return null;
 
-  return <Designer key={`${form.id}-${reloadKey}`} userId={userId} formId={id} form={form} reload={() => setReloadKey((k) => k + 1)} />;
+  return <Designer key={`${form.id}-${reloadKey}`} tenant={tenant} formId={id} form={form} reload={() => setReloadKey((k) => k + 1)} />;
 }

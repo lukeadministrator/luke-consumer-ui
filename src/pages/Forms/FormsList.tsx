@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { useAuth, useUser } from "../../context/AuthContext";
 import { canWrite, FORMS } from "../../lib/capabilities";
@@ -8,7 +8,8 @@ import Button from "../../components/ui/button/Button";
 import Label from "../../components/form/Label";
 import Input from "../../components/form/input/InputField";
 import { PlusIcon, ListIcon, TrashBinIcon, TimeIcon, CopyIcon, BoxIcon } from "../../icons";
-import { useForms, publishVersion, restoreVersion, type StoredForm, type FormStatus } from "../../lib/formsStore";
+import { useForms, type StoredForm, type FormStatus } from "../../lib/formsStore";
+import { listVersions, publishVersion, restoreVersion, type FormArtifact } from "../../lib/formsApi";
 const FormRenderer = lazy(() => import("../../components/formBuilder/FormRenderer"));
 
 const STATUS_BADGE: Record<FormStatus, string> = {
@@ -31,28 +32,45 @@ export default function FormsList() {
   const { session } = useAuth();
   // read → view-only (no create/edit/delete); read-write → full control.
   const canEdit = canWrite(session, FORMS);
-  const { userId, forms, trashed, createForm, clone, archive, softDelete, restore, purge, refresh } = useForms();
+  const { userId, tenant, forms, trashed, loading, error, createForm, clone, archive, softDelete, restore, purge, refresh } = useForms();
   const me = user?.fullName || user?.firstName || user?.email || "You";
-  const who = (id: string) => (id && id === userId ? me : id ? `${id.slice(0, 10)}…` : "—");
+  const who = (id?: string) => (id && id === userId ? me : id ? `${id.slice(0, 10)}…` : "—");
 
   const [isModalOpen, setModalOpen] = useState(false);
   const [name, setName] = useState("");
+  const [creating, setCreating] = useState(false);
   const [historyForm, setHistoryForm] = useState<StoredForm | null>(null);
+  const [historyVersions, setHistoryVersions] = useState<FormArtifact[]>([]);
   const [previewSchema, setPreviewSchema] = useState<string | null>(null);
   const [showTrash, setShowTrash] = useState(false);
+
+  // Load checked-in versions whenever the history modal opens for a form.
+  useEffect(() => {
+    if (!historyForm || !tenant) { setHistoryVersions([]); return; }
+    let active = true;
+    listVersions(tenant, historyForm.id)
+      .then((vs) => active && setHistoryVersions(vs))
+      .catch(() => active && setHistoryVersions([]));
+    return () => { active = false; };
+  }, [historyForm, tenant]);
 
   const openModal = () => {
     setName("");
     setModalOpen(true);
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     const trimmed = name.trim();
-    if (!trimmed) return;
-    const form = createForm(trimmed);
-    setModalOpen(false);
-    setName("");
-    navigate(`/forms/${form.id}`);
+    if (!trimmed || creating) return;
+    setCreating(true);
+    try {
+      const form = await createForm(trimmed);
+      setModalOpen(false);
+      setName("");
+      if (form) navigate(`/forms/${form.id}`);
+    } finally {
+      setCreating(false);
+    }
   };
 
   const hasForms = forms.length > 0;
@@ -94,7 +112,15 @@ export default function FormsList() {
         </div>
       </div>
 
-      {showTrash ? (
+      {error && (
+        <div className="mb-4 rounded-lg border border-error-500 bg-error-50 px-4 py-3 text-sm text-error-600 dark:border-error-500/40 dark:bg-error-500/10 dark:text-error-400">
+          {error}
+        </div>
+      )}
+
+      {loading && forms.length === 0 && !showTrash ? (
+        <div className="flex min-h-[40vh] items-center justify-center text-sm text-gray-400">Loading forms…</div>
+      ) : showTrash ? (
         <div className="space-y-2">
           {trashed.map((form) => (
             <div key={form.id} className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3 dark:border-gray-800">
@@ -148,7 +174,7 @@ export default function FormsList() {
                   <td className="px-5 py-3">
                     {canEdit && (
                       <div className="flex items-center justify-end gap-0.5 opacity-0 transition group-hover:opacity-100">
-                        {form.artifacts.length > 0 && (
+                        {form.latestVersion > 0 && (
                           <button type="button" aria-label="Version history" onClick={(e) => { e.stopPropagation(); setHistoryForm(form); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-brand-500 dark:hover:bg-gray-800"><TimeIcon className="size-4" /></button>
                         )}
                         <button type="button" aria-label="Duplicate" onClick={(e) => { e.stopPropagation(); clone(form.id); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800"><CopyIcon className="size-4" /></button>
@@ -215,8 +241,8 @@ export default function FormsList() {
             <Button variant="outline" onClick={() => setModalOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleCreate} disabled={!name.trim()}>
-              Create &amp; design
+            <Button onClick={handleCreate} disabled={!name.trim() || creating}>
+              {creating ? "Creating…" : "Create & design"}
             </Button>
           </div>
         </div>
@@ -228,8 +254,11 @@ export default function FormsList() {
           <h2 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">Version history</h2>
           <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">{historyForm?.name}</p>
           <ul className="space-y-2">
-            {historyForm?.artifacts.slice().reverse().map((art) => {
-              const isLive = historyForm.publishedVersion === art.version;
+            {historyVersions.length === 0 && (
+              <li className="py-2 text-sm text-gray-400">No checked-in versions yet.</li>
+            )}
+            {historyVersions.slice().reverse().map((art) => {
+              const isLive = historyForm?.publishedVersion === art.version;
               return (
                 <li key={art.version} className="flex items-center justify-between gap-2 rounded-lg border border-gray-200 px-4 py-2.5 dark:border-gray-800">
                   <div className="min-w-0">
@@ -239,8 +268,23 @@ export default function FormsList() {
                   </div>
                   <div className="flex shrink-0 gap-1.5">
                     <Button size="sm" variant="outline" onClick={() => setPreviewSchema(art.schema)}>Preview</Button>
-                    {!isLive && <Button size="sm" variant="outline" onClick={() => { if (userId) { publishVersion(userId, historyForm.id, art.version); refresh(); setHistoryForm({ ...historyForm, publishedVersion: art.version, status: "published" }); } }}>Publish</Button>}
-                    <Button size="sm" variant="outline" onClick={() => { if (userId && window.confirm(`Restore v${art.version} into the editable draft? Current draft edits will be replaced.`)) { restoreVersion(userId, historyForm.id, art.version); refresh(); setHistoryForm(null); } }}>Restore</Button>
+                    {canEdit && !isLive && (
+                      <Button size="sm" variant="outline" onClick={async () => {
+                        if (!tenant || !historyForm) return;
+                        await publishVersion(tenant, historyForm.id, art.version);
+                        await refresh();
+                        setHistoryForm({ ...historyForm, publishedVersion: art.version, status: "published" });
+                      }}>Publish</Button>
+                    )}
+                    {canEdit && (
+                      <Button size="sm" variant="outline" onClick={async () => {
+                        if (!tenant || !historyForm) return;
+                        if (!window.confirm(`Restore v${art.version} into the editable draft? Current draft edits will be replaced.`)) return;
+                        await restoreVersion(tenant, historyForm.id, art.version);
+                        await refresh();
+                        setHistoryForm(null);
+                      }}>Restore</Button>
+                    )}
                   </div>
                 </li>
               );

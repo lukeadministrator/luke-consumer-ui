@@ -127,7 +127,7 @@ export function socialUrl(provider: SocialProvider): string {
 
 // ── Authed calls (Bearer access token, with one refresh-on-401 retry) ──────
 
-async function authed<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
+export async function authed<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
   const headers = new Headers(init.headers);
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
   const res = await fetch(url(path), { ...init, headers, credentials: "include" });
@@ -238,7 +238,7 @@ export type Invitation = {
 
 const seg = (s: string) => encodeURIComponent(s);
 
-function tenantInit(tenantId: string, init: RequestInit = {}): RequestInit {
+export function tenantInit(tenantId: string, init: RequestInit = {}): RequestInit {
   const headers = new Headers(init.headers);
   headers.set("X-Tenant-Id", tenantId);
   return { ...init, headers };
