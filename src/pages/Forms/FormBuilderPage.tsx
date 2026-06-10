@@ -419,9 +419,9 @@ function Designer({ tenant, formId, form, reload }: { tenant: string; formId: st
 
       {/* Toolbar */}
       <div className="mb-5 flex flex-wrap items-center gap-3">
-        <Tooltip content="Back to dashboard">
-          <button type="button" onClick={() => navigate("/dashboard")} className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm font-medium text-gray-600 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/5">
-            <ChevronLeftIcon className="size-5" />Dashboard
+        <Tooltip content="Back to form list">
+          <button type="button" onClick={() => navigate("/forms")} className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm font-medium text-gray-600 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/5">
+            <ChevronLeftIcon className="size-5" />Forms
           </button>
         </Tooltip>
         <div className="h-6 w-px bg-gray-200 dark:bg-gray-700" />
