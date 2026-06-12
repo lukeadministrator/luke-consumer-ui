@@ -27,7 +27,7 @@ import { useAuth } from "../../context/AuthContext";
 import { canWrite, FORMS } from "../../lib/capabilities";
 import Tooltip from "../../components/ui/tooltip/Tooltip";
 import { Modal } from "../../components/ui/modal";
-import { GripVertical } from "lucide-react";
+import { GripVertical, Sparkles } from "lucide-react";
 import { ChevronLeftIcon, CheckLineIcon, PaperPlaneIcon, TrashBinIcon, AngleUpIcon, AngleDownIcon, EyeIcon, PencilIcon } from "../../icons";
 import {
   checkIn,
@@ -49,6 +49,8 @@ import Input from "../../components/form/input/InputField";
 import { formBuilder, PALETTE_GROUPS, CONTAINER_TYPES, type PaletteItem } from "../../components/formBuilder/formBuilder";
 import { attributesComponents, entityComponents, BuilderEntitiesContext } from "../../components/formBuilder/components";
 import FormRenderer from "../../components/formBuilder/FormRenderer";
+import AiAssistPanel from "./AiAssistPanel";
+import type { BuilderSchemaLike } from "../../lib/formAgentApi";
 
 type BuilderSchema = Schema<typeof formBuilder>;
 
@@ -152,7 +154,10 @@ const STATUS_BADGE: Record<FormStatus, string> = {
   archived: "bg-amber-50 text-amber-600 dark:bg-amber-500/15",
 };
 
-function Designer({ tenant, formId, form, reload }: { tenant: string; formId: string; form: StoredForm; reload: () => void }) {
+function Designer({ tenant, formId, form, reload, onSchema, onOpenAi }: {
+  tenant: string; formId: string; form: StoredForm; reload: () => void;
+  onSchema?: (s: BuilderSchemaLike) => void; onOpenAi?: () => void;
+}) {
   const navigate = useNavigate();
   const { session } = useAuth();
   // read → view-only: the canvas is browsable but nothing is persisted and the
@@ -206,6 +211,12 @@ function Designer({ tenant, formId, form, reload }: { tenant: string; formId: st
 
   const { schema } = useBuilderStoreData(builderStore);
   const order = schema.root;
+
+  // Report the live schema up to the parent so the AI panel (which lives above
+  // this remounting component) can read the current form and re-apply changes.
+  useEffect(() => {
+    onSchema?.(schema as unknown as BuilderSchemaLike);
+  }, [schema, onSchema]);
 
   // Acquire the advisory edit lock on open; release it when leaving. A 409 means
   // someone else holds it — we surface a banner but still allow editing.
@@ -447,6 +458,9 @@ function Designer({ tenant, formId, form, reload }: { tenant: string; formId: st
             </>
           ) : (
             <>
+              <Tooltip content="Build or edit this form by chatting with AI">
+                <Button size="sm" variant="outline" onClick={onOpenAi} startIcon={<Sparkles className="size-4" />}>AI</Button>
+              </Tooltip>
               <span className="mr-1 hidden text-xs text-gray-400 sm:inline">{saved ? "Draft saved" : "Saving…"}</span>
               {dirty && version > 0 && (
                 <Tooltip content="Discard draft edits and revert to the live version."><Button size="sm" variant="outline" onClick={handleDiscard}>Discard</Button></Tooltip>
@@ -620,6 +634,10 @@ export default function FormBuilderPage() {
   const [reloadKey, setReloadKey] = useState(0);
   const [form, setForm] = useState<StoredForm | null>(null);
   const [loading, setLoading] = useState(true);
+  // AI panel state lives here (above the keyed Designer) so chat history and the
+  // panel survive the builder remount that applying a change triggers.
+  const [aiOpen, setAiOpen] = useState(false);
+  const [liveSchema, setLiveSchema] = useState<BuilderSchemaLike | null>(null);
 
   // Re-read the session on entry so the editor reflects the caller's *current*
   // FORMS access (a role change made elsewhere won't be in the bootstrap session).
@@ -642,5 +660,26 @@ export default function FormBuilderPage() {
   }
   if (!tenant || !id || !form) return null;
 
-  return <Designer key={`${form.id}-${reloadKey}`} tenant={tenant} formId={id} form={form} reload={() => setReloadKey((k) => k + 1)} />;
+  return (
+    <>
+      <Designer
+        key={`${form.id}-${reloadKey}`}
+        tenant={tenant}
+        formId={id}
+        form={form}
+        reload={() => setReloadKey((k) => k + 1)}
+        onSchema={setLiveSchema}
+        onOpenAi={() => setAiOpen(true)}
+      />
+      <AiAssistPanel
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        tenant={tenant}
+        formId={id}
+        formName={form.name}
+        schema={liveSchema}
+        onApplied={() => setReloadKey((k) => k + 1)}
+      />
+    </>
+  );
 }

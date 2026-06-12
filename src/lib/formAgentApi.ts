@@ -1,0 +1,68 @@
+// Client for the luke-form-agent service (the AI form builder).
+//
+// The agent is a stateless schema generator: given the CURRENT coltorapps
+// schema ({entities, root}) plus a natural-language instruction, it returns the
+// COMPLETE updated schema, which we then saveDraft + reload into the builder.
+//
+// It runs as its own service (Render free tier), so its URL is configured
+// separately from the main API. Falls back to the known deployment.
+
+const AGENT_URL = (
+  import.meta.env.VITE_FORM_AGENT_URL || "https://luke-form-agent.onrender.com"
+).replace(/\/$/, "");
+
+/** coltorapps builder schema — kept loose here; the builder owns the real type. */
+export type BuilderSchemaLike = { entities: Record<string, unknown>; root: string[] };
+
+export type AgentResult = { schema: BuilderSchemaLike; title: string; brain: string };
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Ask the agent to build/edit a form. Retries a couple of times on a free-tier
+ * cold start (the service returns an HTML wake-up page / 502 while spinning up).
+ */
+export async function generateSchema(
+  message: string,
+  schema: BuilderSchemaLike,
+  title?: string,
+  attempt = 1,
+): Promise<AgentResult> {
+  let res: Response;
+  try {
+    res = await fetch(`${AGENT_URL}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, schema, title }),
+    });
+  } catch (e) {
+    throw new Error(
+      `Couldn't reach the form assistant. ${(e as Error).message ?? ""}`.trim(),
+    );
+  }
+
+  // Read as text so a non-JSON cold-start page can't throw "Unexpected token <".
+  const raw = await res.text();
+  let data: (AgentResult & { detail?: string }) | null = null;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    /* HTML / empty — treated as cold start below */
+  }
+
+  if (!res.ok || data === null) {
+    const coldStart = res.status === 502 || res.status === 503 || data === null;
+    if (coldStart && attempt < 3) {
+      await sleep(4000);
+      return generateSchema(message, schema, title, attempt + 1);
+    }
+    const detail =
+      (data && data.detail) || `The form assistant is unavailable (HTTP ${res.status}).`;
+    throw new Error(typeof detail === "string" ? detail : "Form assistant error");
+  }
+
+  return data as AgentResult;
+}
+
+/** Was a cold start likely (so callers can show a "waking up" hint)? */
+export const AGENT_BASE_URL = AGENT_URL;
