@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Sparkles, X } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import Button from "../../components/ui/button/Button";
 import { saveDraft } from "../../lib/formsApi";
 import { generateSchema, type BuilderSchemaLike } from "../../lib/formAgentApi";
@@ -16,26 +16,27 @@ const SUGGESTIONS = [
 ];
 
 /**
- * Docked chat panel (a right rail beside the builder canvas) that drives
- * luke-form-agent. It lives in the parent, above the keyed Designer, so its
- * history survives the builder remount each applied change triggers. On success
- * it saveDrafts the new schema and hands it up via onApplied(schema, title),
- * which the parent applies locally (no page reload).
+ * Docked chat panel (a permanent right rail beside the builder canvas) that
+ * drives luke-form-agent. It lives in the parent, above the keyed Designer, so
+ * its history survives the builder remount each applied change triggers. On
+ * success it saveDrafts the new schema and hands it up via onApplied(schema,
+ * title), which the parent applies locally (no page reload). While a request is
+ * in flight it reports busy up via onBusyChange so the canvas can show a status.
  */
 export default function AiAssistPanel({
-  onClose,
   tenant,
   formId,
   formName,
   schema,
   onApplied,
+  onBusyChange,
 }: {
-  onClose: () => void;
   tenant: string;
   formId: string;
   formName: string;
   schema: BuilderSchemaLike | null;
   onApplied: (schema: BuilderSchemaLike, title: string) => void;
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
@@ -53,6 +54,7 @@ export default function AiAssistPanel({
     setMessages((m) => [...m, { role: "you", text: msg }]);
     setInput("");
     setBusy(true);
+    onBusyChange?.(true);
     try {
       const result = await generateSchema(msg, schema ?? EMPTY, formName);
       await saveDraft(tenant, formId, JSON.stringify(result.schema));
@@ -64,6 +66,7 @@ export default function AiAssistPanel({
       setMessages((m) => [...m, { role: "ai", error: true, text: (e as Error).message }]);
     } finally {
       setBusy(false);
+      onBusyChange?.(false);
     }
   };
 
@@ -80,14 +83,6 @@ export default function AiAssistPanel({
             Describe the form — changes apply to the canvas{brain ? ` · ${brain}` : ""}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close AI assistant"
-          className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-white/10"
-        >
-          <X className="size-4" />
-        </button>
       </div>
 
       {/* Log */}

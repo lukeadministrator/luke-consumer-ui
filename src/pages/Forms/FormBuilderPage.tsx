@@ -148,15 +148,45 @@ function Canvas({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Shown over the canvas while the AI assistant is working — a seamless status
+// that walks through what's happening instead of a spinner alone.
+const PROCESSING_STEPS = [
+  "Understanding your request…",
+  "Converting it to a technical capability…",
+  "Designing the fields…",
+  "Applying changes to the canvas…",
+];
+function AiProcessingOverlay() {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    const t = window.setInterval(() => setI((n) => (n + 1) % PROCESSING_STEPS.length), 1600);
+    return () => window.clearInterval(t);
+  }, []);
+  return (
+    <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/75 backdrop-blur-[2px] dark:bg-gray-900/75">
+      <div className="flex flex-col items-center gap-4 text-center">
+        <span className="relative flex size-12 items-center justify-center">
+          <span className="absolute inset-0 animate-spin rounded-full border-2 border-brand-200 border-t-brand-500" />
+          <Sparkles className="size-5 text-brand-500" />
+        </span>
+        <div>
+          <p className="text-sm font-medium text-gray-700 dark:text-gray-200">{PROCESSING_STEPS[i]}</p>
+          <p className="mt-0.5 text-xs text-gray-400">Building with AI</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const STATUS_BADGE: Record<FormStatus, string> = {
   draft: "bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-gray-400",
   published: "bg-success-50 text-success-600 dark:bg-success-500/15",
   archived: "bg-amber-50 text-amber-600 dark:bg-amber-500/15",
 };
 
-function Designer({ tenant, formId, form, reload, onSchema, onOpenAi }: {
+function Designer({ tenant, formId, form, reload, onSchema, aiBusy }: {
   tenant: string; formId: string; form: StoredForm; reload: () => void;
-  onSchema?: (s: BuilderSchemaLike) => void; onOpenAi?: () => void;
+  onSchema?: (s: BuilderSchemaLike) => void; aiBusy?: boolean;
 }) {
   const navigate = useNavigate();
   const { session } = useAuth();
@@ -458,9 +488,6 @@ function Designer({ tenant, formId, form, reload, onSchema, onOpenAi }: {
             </>
           ) : (
             <>
-              <Tooltip content="Build or edit this form by chatting with AI">
-                <Button size="sm" variant="outline" onClick={onOpenAi} startIcon={<Sparkles className="size-4" />}>AI</Button>
-              </Tooltip>
               <span className="mr-1 hidden text-xs text-gray-400 sm:inline">{saved ? "Draft saved" : "Saving…"}</span>
               {dirty && version > 0 && (
                 <Tooltip content="Discard draft edits and revert to the live version."><Button size="sm" variant="outline" onClick={handleDiscard}>Discard</Button></Tooltip>
@@ -509,7 +536,8 @@ function Designer({ tenant, formId, form, reload, onSchema, onOpenAi }: {
           )}
 
           {/* Canvas — non-interactive when the user only has read access. */}
-          <div className="overflow-y-auto rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+          <div className="relative">
+            <div className="h-full overflow-y-auto rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
             <div className={canEdit ? "" : "pointer-events-none select-none"}>
             <Canvas>
               {order.length === 0 ? (
@@ -539,6 +567,8 @@ function Designer({ tenant, formId, form, reload, onSchema, onOpenAi }: {
               )}
             </Canvas>
             </div>
+            </div>
+            {aiBusy && <AiProcessingOverlay />}
           </div>
         </div>
 
@@ -636,7 +666,7 @@ export default function FormBuilderPage() {
   const [loading, setLoading] = useState(true);
   // AI panel state lives here (above the keyed Designer) so chat history and the
   // panel survive the builder remount that applying a change triggers.
-  const [aiOpen, setAiOpen] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
   const [liveSchema, setLiveSchema] = useState<BuilderSchemaLike | null>(null);
   // Bumped to remount ONLY the builder (load a new schema into it) without the
   // full-page reload — keeps the docked chat panel and its history mounted.
@@ -671,6 +701,8 @@ export default function FormBuilderPage() {
   }
   if (!tenant || !id || !form) return null;
 
+  const canEdit = canWrite(session, FORMS);
+
   return (
     <div className="flex gap-4">
       <div className="min-w-0 flex-1">
@@ -681,19 +713,20 @@ export default function FormBuilderPage() {
           form={form}
           reload={() => setReloadKey((k) => k + 1)}
           onSchema={setLiveSchema}
-          onOpenAi={() => setAiOpen((o) => !o)}
+          aiBusy={aiBusy}
         />
       </div>
-      {aiOpen && (
+      {/* Permanent AI chat rail to the right of the builder (editors only). */}
+      {canEdit && (
         <aside className="hidden w-[360px] shrink-0 lg:block">
           <div className="sticky top-24">
             <AiAssistPanel
-              onClose={() => setAiOpen(false)}
               tenant={tenant}
               formId={id}
               formName={form.name}
               schema={liveSchema}
               onApplied={applyAiSchema}
+              onBusyChange={setAiBusy}
             />
           </div>
         </aside>
