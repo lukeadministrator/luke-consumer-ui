@@ -703,7 +703,7 @@ export default function FormBuilderPage() {
   const canEdit = canWrite(session, FORMS);
 
   return (
-    <div className="flex gap-4">
+    <div className="flex items-start gap-4">
       <div className="min-w-0 flex-1">
         <Designer
           key={`${form.id}-${reloadKey}-${designerNonce}`}
@@ -715,19 +715,18 @@ export default function FormBuilderPage() {
           aiBusy={aiBusy}
         />
       </div>
-      {/* Permanent AI chat rail to the right of the builder (editors only). */}
+      {/* Permanent LukeTalks rail — sticky and viewport-tall so it stays fully
+          visible (composer included) and pins as you scroll a long form. */}
       {canEdit && (
-        <aside className="hidden w-[360px] shrink-0 lg:block">
-          <div className="sticky top-24">
-            <AiAssistPanel
-              tenant={tenant}
-              formId={id}
-              formName={form.name}
-              schema={liveSchema}
-              onApplied={applyAiSchema}
-              onBusyChange={setAiBusy}
-            />
-          </div>
+        <aside className="sticky top-24 hidden h-[calc(100vh-9rem)] w-[360px] shrink-0 lg:block">
+          <AiAssistPanel
+            tenant={tenant}
+            formId={id}
+            formName={form.name}
+            schema={liveSchema}
+            onApplied={applyAiSchema}
+            onBusyChange={setAiBusy}
+          />
         </aside>
       )}
     </div>
