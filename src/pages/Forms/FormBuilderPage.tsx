@@ -164,8 +164,8 @@ function AiProcessingOverlay() {
     return () => window.clearInterval(t);
   }, []);
   return (
-    <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/80 backdrop-blur-[2px] dark:bg-gray-900/80">
-      <div className="flex flex-col items-center gap-2 text-center">
+    <div className="absolute inset-0 z-10 rounded-2xl bg-white/80 backdrop-blur-[2px] dark:bg-gray-900/80">
+      <div className="sticky top-[35vh] mx-auto flex w-fit flex-col items-center gap-2 text-center">
         <CapabilityBuildingAnimation />
         <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">Generating capability…</p>
         <p className="text-xs text-gray-400">{PROCESSING_STEPS[i]}</p>
@@ -503,10 +503,10 @@ function Designer({ tenant, formId, form, reload, onSchema, aiBusy }: {
       </div>
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setDragLabel(null)}>
-        <div className={`grid h-[calc(100vh-200px)] min-h-[520px] grid-cols-1 gap-4 ${canEdit ? "lg:grid-cols-[220px_1fr]" : ""}`}>
+        <div className={`grid min-h-[520px] grid-cols-1 items-start gap-4 ${canEdit ? "lg:grid-cols-[220px_1fr]" : ""}`}>
           {/* Palette — only when the user can edit. */}
           {canEdit && (
-          <div className="overflow-y-auto rounded-2xl border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-white/[0.03]">
+          <div className="sticky top-24 max-h-[calc(100vh-9rem)] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-white/[0.03]">
             <input
               type="search"
               value={paletteQuery}
@@ -536,7 +536,7 @@ function Designer({ tenant, formId, form, reload, onSchema, aiBusy }: {
 
           {/* Canvas — non-interactive when the user only has read access. */}
           <div className="relative">
-            <div className="h-full overflow-y-auto rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+            <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
             <div className={canEdit ? "" : "pointer-events-none select-none"}>
             <Canvas>
               {order.length === 0 ? (
