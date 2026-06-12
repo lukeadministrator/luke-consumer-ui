@@ -27,7 +27,7 @@ import { useAuth } from "../../context/AuthContext";
 import { canWrite, FORMS } from "../../lib/capabilities";
 import Tooltip from "../../components/ui/tooltip/Tooltip";
 import { Modal } from "../../components/ui/modal";
-import { GripVertical } from "lucide-react";
+import { GripVertical, ArrowUp } from "lucide-react";
 import { ChevronLeftIcon, CheckLineIcon, PaperPlaneIcon, TrashBinIcon, AngleUpIcon, AngleDownIcon, EyeIcon, PencilIcon } from "../../icons";
 import {
   checkIn,
@@ -444,6 +444,16 @@ function Designer({ tenant, formId, form, reload, onSchema, aiBusy }: {
     setFormSettingsOpen(false);
   };
 
+  // Floating "scroll to top" for the whole-page-scroll layout — shows once the
+  // page is scrolled past a threshold.
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setShowScrollTop(window.scrollY > 300);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   return (
     <>
       <PageMeta title={`${form.name} | Lukeflow`} description="Design your form in Lukeflow." />
@@ -568,6 +578,19 @@ function Designer({ tenant, formId, form, reload, onSchema, aiBusy }: {
             </div>
             </div>
             {aiBusy && <AiProcessingOverlay />}
+            {/* Floating scroll-to-top, anchored to the bottom of the canvas. */}
+            {showScrollTop && (
+              <div className="pointer-events-none sticky bottom-6 z-20 flex justify-end pr-1">
+                <button
+                  type="button"
+                  onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+                  aria-label="Scroll to top"
+                  className="pointer-events-auto flex size-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 shadow-theme-lg transition hover:-translate-y-0.5 hover:text-brand-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                >
+                  <ArrowUp className="size-5" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
