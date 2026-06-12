@@ -4,7 +4,7 @@ import Button from "../../components/ui/button/Button";
 import { saveDraft } from "../../lib/formsApi";
 import { generateSchema, type BuilderSchemaLike } from "../../lib/formAgentApi";
 
-type Msg = { role: "you" | "ai"; text: string; error?: boolean };
+type Msg = { role: "you" | "ai"; text: string; error?: boolean; suggestions?: string[] };
 
 const EMPTY: BuilderSchemaLike = { entities: {}, root: [] };
 
@@ -60,7 +60,8 @@ export default function AiAssistPanel({
       await saveDraft(tenant, formId, JSON.stringify(result.schema));
       setBrain(result.brain);
       const n = result.schema.root?.length ?? 0;
-      setMessages((m) => [...m, { role: "ai", text: `Done — the form now has ${n} field${n === 1 ? "" : "s"}.` }]);
+      const text = result.reply?.trim() || `Done — the form now has ${n} field${n === 1 ? "" : "s"}.`;
+      setMessages((m) => [...m, { role: "ai", text, suggestions: result.suggestions }]);
       onApplied(result.schema, result.title); // parent applies locally + remounts builder
     } catch (e) {
       setMessages((m) => [...m, { role: "ai", error: true, text: (e as Error).message }]);
@@ -104,17 +105,33 @@ export default function AiAssistPanel({
           </div>
         ) : (
           messages.map((m, i) => (
-            <div
-              key={i}
-              className={`max-w-[88%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm ${
-                m.role === "you"
-                  ? "ml-auto bg-brand-500 text-white"
-                  : m.error
-                    ? "bg-error-50 text-error-600 ring-1 ring-error-200 dark:bg-error-500/10"
-                    : "bg-gray-50 text-gray-700 ring-1 ring-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:ring-gray-700"
-              }`}
-            >
-              {m.error ? `⚠ ${m.text}` : m.text}
+            <div key={i}>
+              <div
+                className={`max-w-[88%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm ${
+                  m.role === "you"
+                    ? "ml-auto bg-brand-500 text-white"
+                    : m.error
+                      ? "bg-error-50 text-error-600 ring-1 ring-error-200 dark:bg-error-500/10"
+                      : "bg-gray-50 text-gray-700 ring-1 ring-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:ring-gray-700"
+                }`}
+              >
+                {m.error ? `⚠ ${m.text}` : m.text}
+              </div>
+              {/* Clickable suggestions under the most recent assistant reply. */}
+              {m.role === "ai" && !m.error && m.suggestions && m.suggestions.length > 0 && i === messages.length - 1 && !busy && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {m.suggestions.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => send(s)}
+                      className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-600 transition hover:bg-brand-100 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300 dark:hover:bg-brand-500/20"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           ))
         )}

@@ -14,7 +14,15 @@ const AGENT_URL = (
 /** coltorapps builder schema — kept loose here; the builder owns the real type. */
 export type BuilderSchemaLike = { entities: Record<string, unknown>; root: string[] };
 
-export type AgentResult = { schema: BuilderSchemaLike; title: string; brain: string };
+export type AgentResult = {
+  schema: BuilderSchemaLike;
+  title: string;
+  /** Natural-language message describing what the assistant did. */
+  reply?: string;
+  /** Short, clickable next-step ideas tailored to the form. */
+  suggestions?: string[];
+  brain: string;
+};
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
