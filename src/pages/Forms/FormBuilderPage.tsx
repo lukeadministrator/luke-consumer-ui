@@ -638,6 +638,17 @@ export default function FormBuilderPage() {
   // panel survive the builder remount that applying a change triggers.
   const [aiOpen, setAiOpen] = useState(false);
   const [liveSchema, setLiveSchema] = useState<BuilderSchemaLike | null>(null);
+  // Bumped to remount ONLY the builder (load a new schema into it) without the
+  // full-page reload — keeps the docked chat panel and its history mounted.
+  const [designerNonce, setDesignerNonce] = useState(0);
+
+  // Apply an AI-produced schema locally: the agent already saved the draft, so
+  // just swap it into the form and remount the builder. No refetch, no loading.
+  const applyAiSchema = (schema: BuilderSchemaLike, _title: string) => {
+    setForm((f) => (f ? { ...f, schema: JSON.stringify(schema) } : f));
+    setLiveSchema(schema);
+    setDesignerNonce((n) => n + 1);
+  };
 
   // Re-read the session on entry so the editor reflects the caller's *current*
   // FORMS access (a role change made elsewhere won't be in the bootstrap session).
@@ -661,25 +672,32 @@ export default function FormBuilderPage() {
   if (!tenant || !id || !form) return null;
 
   return (
-    <>
-      <Designer
-        key={`${form.id}-${reloadKey}`}
-        tenant={tenant}
-        formId={id}
-        form={form}
-        reload={() => setReloadKey((k) => k + 1)}
-        onSchema={setLiveSchema}
-        onOpenAi={() => setAiOpen(true)}
-      />
-      <AiAssistPanel
-        open={aiOpen}
-        onClose={() => setAiOpen(false)}
-        tenant={tenant}
-        formId={id}
-        formName={form.name}
-        schema={liveSchema}
-        onApplied={() => setReloadKey((k) => k + 1)}
-      />
-    </>
+    <div className="flex gap-4">
+      <div className="min-w-0 flex-1">
+        <Designer
+          key={`${form.id}-${reloadKey}-${designerNonce}`}
+          tenant={tenant}
+          formId={id}
+          form={form}
+          reload={() => setReloadKey((k) => k + 1)}
+          onSchema={setLiveSchema}
+          onOpenAi={() => setAiOpen((o) => !o)}
+        />
+      </div>
+      {aiOpen && (
+        <aside className="hidden w-[360px] shrink-0 lg:block">
+          <div className="sticky top-24">
+            <AiAssistPanel
+              onClose={() => setAiOpen(false)}
+              tenant={tenant}
+              formId={id}
+              formName={form.name}
+              schema={liveSchema}
+              onApplied={applyAiSchema}
+            />
+          </div>
+        </aside>
+      )}
+    </div>
   );
 }
