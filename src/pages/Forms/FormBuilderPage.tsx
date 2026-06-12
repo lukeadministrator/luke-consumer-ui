@@ -27,7 +27,7 @@ import { useAuth } from "../../context/AuthContext";
 import { canWrite, FORMS } from "../../lib/capabilities";
 import Tooltip from "../../components/ui/tooltip/Tooltip";
 import { Modal } from "../../components/ui/modal";
-import { GripVertical, Sparkles } from "lucide-react";
+import { GripVertical } from "lucide-react";
 import { ChevronLeftIcon, CheckLineIcon, PaperPlaneIcon, TrashBinIcon, AngleUpIcon, AngleDownIcon, EyeIcon, PencilIcon } from "../../icons";
 import {
   checkIn,
@@ -50,6 +50,7 @@ import { formBuilder, PALETTE_GROUPS, CONTAINER_TYPES, type PaletteItem } from "
 import { attributesComponents, entityComponents, BuilderEntitiesContext } from "../../components/formBuilder/components";
 import FormRenderer from "../../components/formBuilder/FormRenderer";
 import AiAssistPanel from "./AiAssistPanel";
+import CapabilityBuildingAnimation from "./CapabilityBuildingAnimation";
 import type { BuilderSchemaLike } from "../../lib/formAgentApi";
 
 type BuilderSchema = Schema<typeof formBuilder>;
@@ -148,13 +149,13 @@ function Canvas({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Shown over the canvas while the AI assistant is working — a seamless status
-// that walks through what's happening instead of a spinner alone.
+// Shown over the canvas while LukeTalks is working — a seamless status with a
+// little worker tightening bolts, stepping through what's happening.
 const PROCESSING_STEPS = [
   "Understanding your request…",
   "Converting it to a technical capability…",
   "Designing the fields…",
-  "Applying changes to the canvas…",
+  "Tightening the bolts…",
 ];
 function AiProcessingOverlay() {
   const [i, setI] = useState(0);
@@ -163,16 +164,14 @@ function AiProcessingOverlay() {
     return () => window.clearInterval(t);
   }, []);
   return (
-    <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/75 backdrop-blur-[2px] dark:bg-gray-900/75">
-      <div className="flex flex-col items-center gap-4 text-center">
-        <span className="relative flex size-12 items-center justify-center">
-          <span className="absolute inset-0 animate-spin rounded-full border-2 border-brand-200 border-t-brand-500" />
-          <Sparkles className="size-5 text-brand-500" />
-        </span>
-        <div>
-          <p className="text-sm font-medium text-gray-700 dark:text-gray-200">{PROCESSING_STEPS[i]}</p>
-          <p className="mt-0.5 text-xs text-gray-400">Building with AI</p>
-        </div>
+    <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/80 backdrop-blur-[2px] dark:bg-gray-900/80">
+      <div className="flex flex-col items-center gap-2 text-center">
+        <CapabilityBuildingAnimation />
+        <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">Generating capability…</p>
+        <p className="text-xs text-gray-400">{PROCESSING_STEPS[i]}</p>
+        <p className="mt-1 bg-gradient-to-r from-brand-500 to-purple-500 bg-clip-text text-[11px] font-bold uppercase tracking-wider text-transparent">
+          LukeTalks
+        </p>
       </div>
     </div>
   );

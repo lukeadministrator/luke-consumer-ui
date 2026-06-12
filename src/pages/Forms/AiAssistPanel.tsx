@@ -75,13 +75,15 @@ export default function AiAssistPanel({
     <div className="flex h-[calc(100vh-200px)] min-h-[520px] w-full flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
       {/* Header */}
       <div className="flex items-center gap-2.5 border-b border-gray-100 px-4 py-3 dark:border-gray-800">
-        <span className="flex size-8 items-center justify-center rounded-lg bg-brand-50 text-brand-500 dark:bg-brand-500/15">
-          <Sparkles className="size-4" />
+        <span className="flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-purple-600 text-white shadow-sm">
+          <Sparkles className="size-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold text-gray-800 dark:text-white/90">AI assistant</h2>
+          <h2 className="text-sm font-bold text-gray-800 dark:text-white/90">
+            Luke<span className="bg-gradient-to-r from-brand-500 to-purple-500 bg-clip-text text-transparent">Talks</span>
+          </h2>
           <p className="truncate text-[11px] text-gray-400">
-            Describe the form — changes apply to the canvas{brain ? ` · ${brain}` : ""}
+            Describe it — I'll build the capability{brain ? ` · ${brain}` : ""}
           </p>
         </div>
       </div>
