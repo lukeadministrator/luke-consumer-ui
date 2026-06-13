@@ -404,7 +404,26 @@ const applyTextTransforms = (a: Record<string, unknown>, val: string): string =>
   return v;
 };
 
-export default function FormRenderer({ schema }: { schema: string }) {
+export default function FormRenderer({
+  schema,
+  initialValues,
+  onSubmit: onSubmitProp,
+  onChange,
+  readOnly = false,
+  submitting = false,
+}: {
+  schema: string;
+  /** Seed values keyed by field KEY (instance prefill + saved data). */
+  initialValues?: Record<string, unknown>;
+  /** Called with the submission payload (keyed by field key) on a valid submit. */
+  onSubmit?: (data: Record<string, unknown>) => void;
+  /** Called with the live data (keyed by field key) on every change (autosave). */
+  onChange?: (data: Record<string, unknown>) => void;
+  /** View-only: inputs disabled, no submit. For viewing a response. */
+  readOnly?: boolean;
+  /** Disables the submit button (while a submit is in flight). */
+  submitting?: boolean;
+}) {
   const parsed = useMemo(() => parse(schema), [schema]);
   const { entities, root } = parsed;
 
@@ -414,7 +433,28 @@ export default function FormRenderer({ schema }: { schema: string }) {
       for (const id of ids) {
         const e = entities[id];
         if (!e) continue;
-        if (CONTAINER.has(e.type)) { if (!GRID.has(e.type)) seed(children(e)); continue; }
+        if (GRID.has(e.type)) {
+          // Grid prefill arrives as key-keyed rows; store them cid-keyed.
+          const iv = initialValues?.[keyOf(id, e)];
+          if (Array.isArray(iv)) {
+            const cellIds = children(e).filter((cid) => entities[cid] && !CONTAINER.has(entities[cid].type) && !STATIC.has(entities[cid].type));
+            const keyToCid: Record<string, string> = {};
+            for (const cid of cellIds) keyToCid[keyOf(cid, entities[cid])] = cid;
+            init[id] = (iv as Record<string, unknown>[]).map((row) => {
+              const o: Record<string, unknown> = {};
+              for (const k in row) { const cid = keyToCid[k]; if (cid) o[cid] = row[k]; }
+              return o;
+            });
+          }
+          continue;
+        }
+        if (CONTAINER.has(e.type)) { seed(children(e)); continue; }
+        if (STATIC.has(e.type)) continue;
+        const k = keyOf(id, e);
+        if (initialValues && k in initialValues && initialValues[k] !== undefined && initialValues[k] !== null) {
+          init[id] = initialValues[k];
+          continue;
+        }
         if (e.type === "checkbox" && e.attributes.defaultChecked) { init[id] = true; continue; }
         const def = e.attributes.defaultValue;
         if (def !== undefined && def !== "") init[id] = def;
@@ -524,6 +564,7 @@ export default function FormRenderer({ schema }: { schema: string }) {
   }, [scope]);
 
   const set = (id: string, value: unknown) => {
+    if (readOnly) return;
     touched.current.add(id);
     setValues((p) => ({ ...p, [id]: value }));
     setErrors((p) => (p[id] ? { ...p, [id]: "" } : p));
@@ -756,7 +797,7 @@ export default function FormRenderer({ schema }: { schema: string }) {
     const a = e.attributes;
     const hideLabel = asBool(a.hideLabel);
     const lg = evalLogic(a);
-    const disabled = lg.disabled ?? asBool(a.disabled);
+    const disabled = readOnly || (lg.disabled ?? asBool(a.disabled));
     const required = lg.required ?? asBool(a.required);
     const controlId = `f-${id}`, labelId = `l-${id}`, errId = `er-${id}`, descId = `de-${id}`;
     const hasErr = !!errors[id];
@@ -825,16 +866,16 @@ export default function FormRenderer({ schema }: { schema: string }) {
                   return (
                     <div key={cid}>
                       <label htmlFor={NON_LABELABLE.has(ce.type) ? undefined : cellId} id={cellLabelId} className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">{asStr(ce.attributes.label)}</label>
-                      {renderControl(ce, row[cid], (v) => { const n = rows.map((r, i) => (i === ri ? { ...r, [cid]: v } : r)); setRows(n); }, false, cellA11y)}
+                      {renderControl(ce, row[cid], (v) => { const n = rows.map((r, i) => (i === ri ? { ...r, [cid]: v } : r)); setRows(n); }, readOnly, cellA11y)}
                     </div>
                   );
                 })}
               </div>
-              <button type="button" onClick={() => setRows(rows.filter((_, i) => i !== ri))} className="absolute right-2 top-2 text-xs text-gray-400 hover:text-error-500">Remove</button>
+              {readOnly ? null : <button type="button" onClick={() => setRows(rows.filter((_, i) => i !== ri))} className="absolute right-2 top-2 text-xs text-gray-400 hover:text-error-500">Remove</button>}
             </div>
           ))}
         </div>
-        <button type="button" onClick={() => setRows([...rows, {}])} className="mt-2 text-sm font-medium text-brand-500 hover:text-brand-600">+ Add {edit ? "entry" : "row"}</button>
+        {readOnly ? null : <button type="button" onClick={() => setRows([...rows, {}])} className="mt-2 text-sm font-medium text-brand-500 hover:text-brand-600">+ Add {edit ? "entry" : "row"}</button>}
         {errors[id] ? <p role="alert" className="mt-1 text-xs text-error-500">{errors[id]}</p> : null}
       </div>
     );
@@ -873,7 +914,7 @@ export default function FormRenderer({ schema }: { schema: string }) {
     if (e.type === "heading") return <h3 key={id} className="text-lg font-semibold text-gray-800 dark:text-white/90">{asStr(a.label)}</h3>;
     if (e.type === "content") return <p key={id} className="text-sm text-gray-600 dark:text-gray-400">{asStr(a.content)}</p>;
     if (e.type === "button")
-      return <button key={id} type="submit" className="rounded-lg bg-brand-500 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-600">{asStr(a.label) || "Submit"}</button>;
+      return <button key={id} type="submit" disabled={readOnly || submitting} className="rounded-lg bg-brand-500 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50">{submitting ? "Submitting…" : asStr(a.label) || "Submit"}</button>;
     if (e.type === "next" || e.type === "previous") {
       const goNext = e.type === "next";
       const onClick = () => {
@@ -947,19 +988,18 @@ export default function FormRenderer({ schema }: { schema: string }) {
     return fieldWrapper(id, e);
   };
 
-  const onSubmit = (ev: React.FormEvent) => {
-    ev.preventDefault();
-    const next: Record<string, string> = {};
+  // Assemble the submission payload (keyed by field key). When `validate` is
+  // true it also collects validation errors into `errs`.
+  const collect = (validate: boolean): { data: Record<string, unknown>; errs: Record<string, string> } => {
     const data: Record<string, unknown> = {};
+    const errs: Record<string, string> = {};
     const walk = (ids: string[]) => {
       for (const id of ids) {
         const e = entities[id];
         if (!e || !isVisible(e)) continue;
         if (GRID.has(e.type)) {
           const rows = Array.isArray(values[id]) ? (values[id] as Record<string, unknown>[]) : [];
-          const gerr = validateGridRows(e, rows);
-          if (gerr) next[id] = gerr;
-          // Emit rows keyed by each cell's field key — never the internal entity id.
+          if (validate) { const gerr = validateGridRows(e, rows); if (gerr) errs[id] = gerr; }
           const cellIds = gridCellIds(e);
           data[keyOf(id, e)] = rows.map((row) => {
             const out: Record<string, unknown> = {};
@@ -970,14 +1010,36 @@ export default function FormRenderer({ schema }: { schema: string }) {
         }
         if (CONTAINER.has(e.type)) { walk(children(e)); continue; }
         if (STATIC.has(e.type)) continue;
-        const err = validateField(e, values[id], { ...scope, value: scope[keyOf(id, e)] });
-        if (err) next[id] = err;
-        else if (e.attributes.persistent !== false) data[keyOf(id, e)] = values[id] ?? null;
+        if (validate) {
+          const err = validateField(e, values[id], { ...scope, value: scope[keyOf(id, e)] });
+          if (err) { errs[id] = err; continue; }
+        }
+        if (e.attributes.persistent !== false) data[keyOf(id, e)] = values[id] ?? null;
       }
     };
     walk(root);
-    setErrors(next);
-    if (Object.keys(next).length === 0) setSubmitted(data);
+    return { data, errs };
+  };
+
+  // Autosave: report live data on every change (skip the initial seed render).
+  const onChangeRef = useRef(onChange);
+  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
+  const firstChange = useRef(true);
+  useEffect(() => {
+    if (firstChange.current) { firstChange.current = false; return; }
+    onChangeRef.current?.(collect(false).data);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [values]);
+
+  const onSubmit = (ev: React.FormEvent) => {
+    ev.preventDefault();
+    if (readOnly || submitting) return;
+    const { data, errs } = collect(true);
+    setErrors(errs);
+    if (Object.keys(errs).length === 0) {
+      if (onSubmitProp) onSubmitProp(data);
+      else setSubmitted(data);
+    }
   };
 
   if (root.length === 0) return <p className="py-10 text-center text-sm text-gray-400">This form has no fields yet.</p>;
@@ -987,8 +1049,8 @@ export default function FormRenderer({ schema }: { schema: string }) {
   return (
     <form onSubmit={onSubmit} noValidate className="space-y-5">
       {root.map((id) => renderEntity(id))}
-      {!hasButton && (
-        <button type="submit" className="rounded-lg bg-brand-500 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-600">Submit</button>
+      {!hasButton && !readOnly && (
+        <button type="submit" disabled={submitting} className="rounded-lg bg-brand-500 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50">{submitting ? "Submitting…" : "Submit"}</button>
       )}
       {submitted && (
         <div className="rounded-xl border border-success-500/30 bg-success-50 p-4 dark:bg-success-500/10" role="status">

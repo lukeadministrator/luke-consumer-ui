@@ -18,6 +18,8 @@ import AccessManagement from "./pages/Access/AccessManagement";
 
 // Code-split the form designer (builder + zod) to its own route chunk.
 const FormBuilderPage = lazy(() => import("./pages/Forms/FormBuilderPage"));
+const FormFill = lazy(() => import("./pages/Forms/FormFill"));
+const FormResponses = lazy(() => import("./pages/Forms/FormResponses"));
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import GuestRoute from "./components/auth/GuestRoute";
 import OnboardingGate from "./components/auth/OnboardingGate";
@@ -65,6 +67,23 @@ export default function App() {
                       }
                     >
                       <FormBuilderPage />
+                    </Suspense>
+                  }
+                />
+                {/* Fill a form (creates a runtime instance) and view its responses. */}
+                <Route
+                  path="/forms/:code/fill"
+                  element={
+                    <Suspense fallback={<div className="flex h-[60vh] items-center justify-center text-sm text-gray-400">Loading…</div>}>
+                      <FormFill />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="/forms/:code/responses"
+                  element={
+                    <Suspense fallback={<div className="flex h-[60vh] items-center justify-center text-sm text-gray-400">Loading…</div>}>
+                      <FormResponses />
                     </Suspense>
                   }
                 />

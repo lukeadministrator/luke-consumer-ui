@@ -7,7 +7,7 @@ import { Modal } from "../../components/ui/modal";
 import Button from "../../components/ui/button/Button";
 import Label from "../../components/form/Label";
 import Input from "../../components/form/input/InputField";
-import { PlusIcon, ListIcon, TrashBinIcon, TimeIcon, CopyIcon, BoxIcon } from "../../icons";
+import { PlusIcon, ListIcon, TrashBinIcon, TimeIcon, CopyIcon, BoxIcon, PaperPlaneIcon, EyeIcon } from "../../icons";
 import { useForms, type StoredForm, type FormStatus } from "../../lib/formsStore";
 import { listVersions, publishVersion, restoreVersion, type FormArtifact } from "../../lib/formsApi";
 const FormRenderer = lazy(() => import("../../components/formBuilder/FormRenderer"));
@@ -185,16 +185,22 @@ export default function FormsList() {
                   <td className="px-5 py-3 text-gray-500 dark:text-gray-400">{formatUpdated(form.updatedAt)}</td>
                   <td className="px-5 py-3 text-gray-500 dark:text-gray-400">{who(form.updatedBy)}</td>
                   <td className="px-5 py-3">
-                    {canEdit && (
-                      <div className="flex items-center justify-end gap-0.5 opacity-0 transition group-hover:opacity-100">
-                        {form.latestVersion > 0 && (
-                          <button type="button" aria-label="Version history" onClick={(e) => { e.stopPropagation(); setHistoryForm(form); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-brand-500 dark:hover:bg-gray-800"><TimeIcon className="size-4" /></button>
-                        )}
-                        <button type="button" aria-label="Duplicate" onClick={(e) => { e.stopPropagation(); clone(form.id); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800"><CopyIcon className="size-4" /></button>
-                        <button type="button" aria-label={form.status === "archived" ? "Unarchive" : "Archive"} onClick={(e) => { e.stopPropagation(); archive(form.id, form.status !== "archived"); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-amber-500 dark:hover:bg-gray-800"><BoxIcon className="size-4" /></button>
-                        <button type="button" aria-label="Delete" onClick={(e) => { e.stopPropagation(); softDelete(form.id); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-error-500 dark:hover:bg-gray-800"><TrashBinIcon className="size-4" /></button>
-                      </div>
-                    )}
+                    <div className="flex items-center justify-end gap-0.5 opacity-0 transition group-hover:opacity-100">
+                      {form.publishedVersion ? (
+                        <button type="button" aria-label="Fill" title="Fill out this form" onClick={(e) => { e.stopPropagation(); navigate(`/forms/${form.code}/fill`); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-brand-500 dark:hover:bg-gray-800"><PaperPlaneIcon className="size-4" /></button>
+                      ) : null}
+                      <button type="button" aria-label="Responses" title="View responses" onClick={(e) => { e.stopPropagation(); navigate(`/forms/${form.code}/responses`); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-brand-500 dark:hover:bg-gray-800"><EyeIcon className="size-4" /></button>
+                      {canEdit && (
+                        <>
+                          {form.latestVersion > 0 && (
+                            <button type="button" aria-label="Version history" onClick={(e) => { e.stopPropagation(); setHistoryForm(form); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-brand-500 dark:hover:bg-gray-800"><TimeIcon className="size-4" /></button>
+                          )}
+                          <button type="button" aria-label="Duplicate" onClick={(e) => { e.stopPropagation(); clone(form.id); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800"><CopyIcon className="size-4" /></button>
+                          <button type="button" aria-label={form.status === "archived" ? "Unarchive" : "Archive"} onClick={(e) => { e.stopPropagation(); archive(form.id, form.status !== "archived"); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-amber-500 dark:hover:bg-gray-800"><BoxIcon className="size-4" /></button>
+                          <button type="button" aria-label="Delete" onClick={(e) => { e.stopPropagation(); softDelete(form.id); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-error-500 dark:hover:bg-gray-800"><TrashBinIcon className="size-4" /></button>
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

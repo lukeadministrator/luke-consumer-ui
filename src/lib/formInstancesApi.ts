@@ -1,0 +1,186 @@
+// Client for the capability-engine form-instance lifecycle, routed through the
+// gateway (/api/form-instances/** → core-engine proxy → capability-engine). A
+// form instance is a concrete runtime occurrence of a published definition
+// version: a fill session that autosaves and submits. Tenant-scoped (X-Tenant-Id)
+// and capability-gated server-side, same as form-definitions.
+import { authed, tenantInit } from "./authApi";
+
+const BASE = "/api/form-instances";
+const seg = (s: string) => encodeURIComponent(s);
+
+// ── Lifecycle states (mirror FormInstanceStates on the backend) ──────────────
+export type InstanceState =
+  | "CREATED" | "SENT" | "OPENED" | "IN_PROGRESS"
+  | "SUBMITTED" | "PROCESSED" | "EXPIRED" | "CANCELLED";
+
+/** States in which the instance can still be opened/edited/submitted. */
+export const OPEN_STATES: ReadonlySet<InstanceState> = new Set([
+  "CREATED", "SENT", "OPENED", "IN_PROGRESS",
+]);
+export const isOpen = (s: InstanceState): boolean => OPEN_STATES.has(s);
+
+// ── View model ───────────────────────────────────────────────────────────────
+export type FormInstance = {
+  id: string;
+  token: string;
+  definitionCode: string;
+  version: number;
+  state: InstanceState;
+  /** Read-only seed values (key → value), shown but typically not submitted. */
+  prefill?: Record<string, unknown>;
+  /** The working/submitted answers (key → value). */
+  data?: Record<string, unknown>;
+  recipient?: Record<string, unknown>;
+  context?: Record<string, unknown>;
+  createdBy?: string;
+  createdAt: number;
+  expiresAt?: number;
+  submittedAt?: number;
+  updatedAt?: number;
+};
+
+/** A loaded instance plus the pinned schema string to render it with. */
+export type InstanceView = { instance: FormInstance; schema: string };
+
+// ── Backend DTOs ─────────────────────────────────────────────────────────────
+type ApiInstance = {
+  id: string;
+  token: string;
+  definitionCode: string;
+  version: number;
+  state: string;
+  prefill?: Record<string, unknown> | null;
+  data?: Record<string, unknown> | null;
+  recipient?: Record<string, unknown> | null;
+  context?: Record<string, unknown> | null;
+  createdBy?: string | null;
+  createdAt?: unknown;
+  expiresAt?: unknown;
+  submittedAt?: unknown;
+  updatedAt?: unknown;
+};
+type ApiView = { instance: ApiInstance; schema?: string | null };
+
+// LocalDateTime may arrive as an ISO string or a [Y,M,D,h,m,s] array (Jackson),
+// or epoch millis — be tolerant.
+const ms = (v: unknown): number | undefined => {
+  if (v == null) return undefined;
+  if (typeof v === "number") return v;
+  if (typeof v === "string") { const t = Date.parse(v); return Number.isNaN(t) ? undefined : t; }
+  if (Array.isArray(v) && v.length >= 3) {
+    const [Y, Mo, D, h = 0, mi = 0, s = 0] = v as number[];
+    return new Date(Y, Mo - 1, D, h, mi, s).getTime();
+  }
+  return undefined;
+};
+
+function toInstance(i: ApiInstance): FormInstance {
+  return {
+    id: i.id,
+    token: i.token,
+    definitionCode: i.definitionCode,
+    version: i.version,
+    state: (i.state as InstanceState) ?? "CREATED",
+    prefill: i.prefill ?? undefined,
+    data: i.data ?? undefined,
+    recipient: i.recipient ?? undefined,
+    context: i.context ?? undefined,
+    createdBy: i.createdBy ?? undefined,
+    createdAt: ms(i.createdAt) ?? 0,
+    expiresAt: ms(i.expiresAt),
+    submittedAt: ms(i.submittedAt),
+    updatedAt: ms(i.updatedAt),
+  };
+}
+
+const toView = (v: ApiView): InstanceView => ({ instance: toInstance(v.instance), schema: v.schema ?? "" });
+
+// ── Requests ─────────────────────────────────────────────────────────────────
+function req<T>(tenant: string, path: string, init: RequestInit = {}, userId?: string): Promise<T> {
+  const headers = new Headers(init.headers);
+  if (init.body) headers.set("Content-Type", "application/json");
+  if (userId) headers.set("X-User-Id", userId);
+  return authed<T>(path, tenantInit(tenant, { ...init, headers }));
+}
+
+export type CreateInstanceInput = {
+  definitionCode: string;
+  version?: number;
+  prefill?: Record<string, unknown>;
+  recipient?: Record<string, unknown>;
+  context?: Record<string, unknown>;
+  expiresAt?: number;
+};
+
+/** Start a fill session for a form's published version (or a specific version). */
+export async function createInstance(tenant: string, input: CreateInstanceInput, userId?: string): Promise<InstanceView> {
+  const v = await req<ApiView>(tenant, BASE, { method: "POST", body: JSON.stringify(input) }, userId);
+  return toView(v);
+}
+
+/** Full instance + schema, for rendering / viewing a response. */
+export async function getInstance(tenant: string, id: string): Promise<InstanceView> {
+  return toView(await req<ApiView>(tenant, `${BASE}/${seg(id)}`));
+}
+
+export async function getInstanceByToken(tenant: string, token: string): Promise<InstanceView> {
+  return toView(await req<ApiView>(tenant, `${BASE}/by-token/${seg(token)}`));
+}
+
+/** All instances for the tenant, optionally filtered by form code or state. */
+export async function listInstances(
+  tenant: string,
+  filter: { definitionCode?: string; state?: InstanceState } = {},
+): Promise<FormInstance[]> {
+  const qs = new URLSearchParams();
+  if (filter.definitionCode) qs.set("definitionCode", filter.definitionCode);
+  if (filter.state) qs.set("state", filter.state);
+  const q = qs.toString();
+  const list = await req<ApiInstance[]>(tenant, `${BASE}${q ? `?${q}` : ""}`);
+  return list.map(toInstance);
+}
+
+/** Partial autosave (merges into the instance's data; moves it to IN_PROGRESS). */
+export async function saveInstanceData(
+  tenant: string,
+  id: string,
+  data: Record<string, unknown>,
+): Promise<InstanceView> {
+  return toView(await req<ApiView>(tenant, `${BASE}/${seg(id)}`, { method: "PATCH", body: JSON.stringify({ data }) }));
+}
+
+/** Submit the instance (optionally with a final data merge). */
+export async function submitInstance(
+  tenant: string,
+  id: string,
+  data?: Record<string, unknown>,
+): Promise<InstanceView> {
+  return toView(
+    await req<ApiView>(tenant, `${BASE}/${seg(id)}/submit`, {
+      method: "POST",
+      body: JSON.stringify(data ? { data } : {}),
+    }),
+  );
+}
+
+export async function sendInstance(tenant: string, id: string): Promise<FormInstance> {
+  return toInstance(await req<ApiInstance>(tenant, `${BASE}/${seg(id)}/send`, { method: "POST" }));
+}
+export async function cancelInstance(tenant: string, id: string): Promise<FormInstance> {
+  return toInstance(await req<ApiInstance>(tenant, `${BASE}/${seg(id)}/cancel`, { method: "POST" }));
+}
+export async function markProcessed(tenant: string, id: string): Promise<FormInstance> {
+  return toInstance(await req<ApiInstance>(tenant, `${BASE}/${seg(id)}/processed`, { method: "POST" }));
+}
+
+/** Human label for a lifecycle state. */
+export const STATE_LABEL: Record<InstanceState, string> = {
+  CREATED: "Created",
+  SENT: "Sent",
+  OPENED: "Opened",
+  IN_PROGRESS: "In progress",
+  SUBMITTED: "Submitted",
+  PROCESSED: "Processed",
+  EXPIRED: "Expired",
+  CANCELLED: "Cancelled",
+};
