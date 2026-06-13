@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Sparkles } from "lucide-react";
 import Button from "../../components/ui/button/Button";
+import { useAuth } from "../../context/AuthContext";
 import { saveDraft } from "../../lib/formsApi";
 import { generateSchema, type BuilderSchemaLike } from "../../lib/formAgentApi";
 
@@ -38,6 +39,7 @@ export default function AiAssistPanel({
   onApplied: (schema: BuilderSchemaLike, title: string) => void;
   onBusyChange?: (busy: boolean) => void;
 }) {
+  const { session } = useAuth();
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -56,7 +58,7 @@ export default function AiAssistPanel({
     setBusy(true);
     onBusyChange?.(true);
     try {
-      const result = await generateSchema(msg, schema ?? EMPTY, formName);
+      const result = await generateSchema(msg, schema ?? EMPTY, formName, session?.userId);
       setBrain(result.brain);
       const n = result.schema.root?.length ?? 0;
       const text = result.reply?.trim() || `Done — the form now has ${n} field${n === 1 ? "" : "s"}.`;

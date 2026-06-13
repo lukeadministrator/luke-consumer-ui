@@ -36,6 +36,7 @@ export async function generateSchema(
   message: string,
   schema: BuilderSchemaLike,
   title?: string,
+  userId?: string,
   attempt = 1,
 ): Promise<AgentResult> {
   let res: Response;
@@ -43,7 +44,7 @@ export async function generateSchema(
     res = await fetch(`${AGENT_URL}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, schema, title }),
+      body: JSON.stringify({ message, schema, title, user_id: userId }),
     });
   } catch (e) {
     throw new Error(
@@ -64,7 +65,7 @@ export async function generateSchema(
     const coldStart = res.status === 502 || res.status === 503 || data === null;
     if (coldStart && attempt < 3) {
       await sleep(4000);
-      return generateSchema(message, schema, title, attempt + 1);
+      return generateSchema(message, schema, title, userId, attempt + 1);
     }
     const detail =
       (data && data.detail) || `The form assistant is unavailable (HTTP ${res.status}).`;
