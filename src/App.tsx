@@ -20,6 +20,7 @@ import AccessManagement from "./pages/Access/AccessManagement";
 const FormBuilderPage = lazy(() => import("./pages/Forms/FormBuilderPage"));
 const FormFill = lazy(() => import("./pages/Forms/FormFill"));
 const FormResponses = lazy(() => import("./pages/Forms/FormResponses"));
+const FormEmbed = lazy(() => import("./pages/Forms/FormEmbed"));
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import GuestRoute from "./components/auth/GuestRoute";
 import OnboardingGate from "./components/auth/OnboardingGate";
@@ -96,6 +97,16 @@ export default function App() {
             <Route path="/signin" element={<SignIn />} />
             <Route path="/signup" element={<SignUp />} />
           </Route>
+
+          {/* Public embeddable form (iframe target) — no auth; the signed token is the auth. */}
+          <Route
+            path="/embed/:token"
+            element={
+              <Suspense fallback={<div className="flex min-h-screen items-center justify-center text-sm text-gray-400">Loading…</div>}>
+                <FormEmbed />
+              </Suspense>
+            }
+          />
 
           {/* Social / SSO redirect handler — outside the guards (no session yet). */}
           <Route path="/sso-callback" element={<SsoCallback />} />
