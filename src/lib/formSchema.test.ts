@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   isValidKey,
+  isAutoKey,
   sanitizeKey,
   uniqueKey,
   keyOf,
@@ -62,9 +63,25 @@ describe("uniqueKey", () => {
   it("returns the base when free", () => {
     expect(uniqueKey("email", new Set())).toBe("email");
   });
-  it("suffixes incrementally on collision", () => {
-    expect(uniqueKey("email", new Set(["email"]))).toBe("email2");
-    expect(uniqueKey("email", new Set(["email", "email2"]))).toBe("email3");
+  it("suffixes incrementally on collision, starting at 1", () => {
+    expect(uniqueKey("email", new Set(["email"]))).toBe("email1");
+    expect(uniqueKey("email", new Set(["email", "email1"]))).toBe("email2");
+  });
+});
+
+describe("isAutoKey", () => {
+  it("treats the label base and base+digits as auto", () => {
+    expect(isAutoKey("firstName", "First Name")).toBe(true);
+    expect(isAutoKey("firstName1", "First Name")).toBe(true);
+    expect(isAutoKey("firstName12", "First Name")).toBe(true);
+  });
+  it("treats a diverged key as a manual override", () => {
+    expect(isAutoKey("applicantName", "First Name")).toBe(false);
+    expect(isAutoKey("firstNameX", "First Name")).toBe(false);
+    expect(isAutoKey("first_name", "First Name")).toBe(false);
+  });
+  it("treats an empty key as auto", () => {
+    expect(isAutoKey("", "First Name")).toBe(true);
   });
 });
 
@@ -96,7 +113,7 @@ describe("normalizeKeys", () => {
     };
     const out = normalizeKeys(schema);
     expect(out.entities.a.attributes.key).toBe("email");
-    expect(out.entities.b.attributes.key).toBe("email2");
+    expect(out.entities.b.attributes.key).toBe("email1");
     expect(out.entities.c.attributes.key).toBe("firstName");
     expect(duplicateKeyIds(out).size).toBe(0);
   });

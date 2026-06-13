@@ -68,12 +68,26 @@ export function sanitizeKey(raw: unknown): string {
   return k || "field";
 }
 
-/** Return `base`, or `base2`, `base3`… until it isn't already in `taken`. */
+/** Return `base`, or `base1`, `base2`… until it isn't already in `taken`. */
 export function uniqueKey(base: string, taken: ReadonlySet<string>): string {
   if (!taken.has(base)) return base;
-  let n = 2;
+  let n = 1;
   while (taken.has(`${base}${n}`)) n++;
   return `${base}${n}`;
+}
+
+/**
+ * True when `key` still looks auto-derived from `label` — i.e. it's the label's
+ * camelCase base, or that base with a numeric collision suffix. Used to decide
+ * whether a label edit should keep re-deriving the key: once the user edits the
+ * key to something that no longer matches the label, this returns false and the
+ * key is treated as a manual override (no further auto-sync). Survives reloads
+ * because it's computed purely from the key/label pair, not a stored flag.
+ */
+export function isAutoKey(key: string, label: string): boolean {
+  if (!key) return true; // empty → will be derived
+  const base = sanitizeKey(label); // identifier-safe, so regex-safe
+  return key === base || new RegExp(`^${base}\\d+$`).test(key);
 }
 
 /** Effective key for an entity (its `key` attribute, falling back to its id). */

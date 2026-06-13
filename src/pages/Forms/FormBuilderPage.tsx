@@ -56,6 +56,7 @@ import { z } from "zod";
 import {
   collectKeys,
   duplicateKeyIds,
+  isAutoKey,
   isKeyed,
   isValidKey,
   keyOf,
@@ -83,9 +84,33 @@ const makeFieldError = (message: string): z.ZodError =>
 // Minimal structural view of the builder store, for the derived-error pass.
 type DerivedErrorStore = {
   getSchema(): unknown;
+  setEntityAttribute(entityId: string, name: string, value: unknown): void;
   setEntityAttributeError(entityId: string, name: string, error?: unknown): void;
   resetEntityAttributeError(entityId: string, name: string): void;
 };
+
+// Re-derive a field's key (camelCase of its label, made unique) when the label
+// changes — but only while the key is still auto (hasn't been manually edited
+// away from the label). `prevLabel` tracks the label at the last sync so we can
+// tell an auto key from a manual one across keystrokes.
+function syncKeyToLabel(store: DerivedErrorStore, id: string, prevLabel: Map<string, string>): void {
+  const s = store.getSchema() as FormSchema;
+  const e = s.entities[id];
+  if (!e || !isKeyed(e)) return;
+  const newLabel = typeof e.attributes.label === "string" ? e.attributes.label : "";
+  const oldLabel = prevLabel.get(id) ?? newLabel;
+  const currentKey = typeof e.attributes.key === "string" ? e.attributes.key : "";
+  prevLabel.set(id, newLabel);
+  if (!isAutoKey(currentKey, oldLabel)) return; // manual override — leave it alone
+  const taken = new Set<string>();
+  for (const [oid, oe] of Object.entries(s.entities)) {
+    if (oid === id || !isKeyed(oe)) continue;
+    const k = oe.attributes.key;
+    if (typeof k === "string" && k) taken.add(k);
+  }
+  const newKey = uniqueKey(sanitizeKey(newLabel), taken);
+  if (newKey !== currentKey) store.setEntityAttribute(id, "key", newKey);
+}
 
 // The set of identifiers an expression may legally reference: every field key
 // plus the implicit `value` (the field's own value, used in custom validation).
@@ -305,6 +330,9 @@ function Designer({ tenant, formId, form, reload, onSchema, building, suppressFl
   // True while there are edits not yet persisted to the backend (the 600ms
   // autosave debounce window). Drives the leave-guard and the unmount flush.
   const unsavedRef = useRef(false);
+  // entityId → label at the last key sync, so a label edit can tell whether the
+  // key is still auto-derived (resync) or was manually overridden (leave it).
+  const prevLabelRef = useRef<Map<string, string>>(new Map());
 
   // Load the activity feed when the form-settings modal opens.
   useEffect(() => {
@@ -322,11 +350,17 @@ function Designer({ tenant, formId, form, reload, onSchema, building, suppressFl
     initialData: initialSchema ? { schema: initialSchema } : undefined,
     events: {
       onEntityAttributeUpdated(payload) {
-        // Keys and expressions need a form-wide pass, not just per-value checks.
-        if (payload.attributeName === "key" || (EXPR_ATTRS as readonly string[]).includes(payload.attributeName)) {
+        const name = payload.attributeName;
+        if (name === "label") {
+          // Re-derive the key from the label (Form.io-style) while it's auto.
+          syncKeyToLabel(builderStore as unknown as DerivedErrorStore, payload.entity.id, prevLabelRef.current);
+          void builderStore.validateEntityAttribute(payload.entity.id, "label");
+          applyDerivedErrors(builderStore as unknown as DerivedErrorStore);
+        } else if (name === "key" || (EXPR_ATTRS as readonly string[]).includes(name)) {
+          // Keys and expressions need a form-wide pass, not just per-value checks.
           applyDerivedErrors(builderStore as unknown as DerivedErrorStore);
         } else {
-          void builderStore.validateEntityAttribute(payload.entity.id, payload.attributeName);
+          void builderStore.validateEntityAttribute(payload.entity.id, name);
         }
       },
       onEntityDeleted(payload) {
@@ -338,8 +372,13 @@ function Designer({ tenant, formId, form, reload, onSchema, building, suppressFl
   });
 
   // Surface any pre-existing problems (legacy or AI-applied schemas) as soon as
-  // the builder mounts, before the user touches anything.
+  // the builder mounts, and seed the label→key baseline so the first label edit
+  // can tell an auto key from a manual one.
   useEffect(() => {
+    const s = builderStore.getSchema() as unknown as FormSchema;
+    for (const [eid, ent] of Object.entries(s.entities)) {
+      if (isKeyed(ent)) prevLabelRef.current.set(eid, typeof ent.attributes.label === "string" ? ent.attributes.label : "");
+    }
     applyDerivedErrors(builderStore as unknown as DerivedErrorStore);
   }, [builderStore]);
 
@@ -502,6 +541,8 @@ function Designer({ tenant, formId, form, reload, onSchema, building, suppressFl
       ...(parentId ? { parentId } : {}),
       ...(index !== undefined ? { index } : {}),
     } as Parameters<typeof builderStore.addEntity>[0]);
+    // Seed the label→key baseline so renaming this new field resyncs its key.
+    if (TYPES_WITH_KEY.has(type)) prevLabelRef.current.set(entity.id, String(defaults.label ?? type));
     // Tabs need at least a couple of tabs to be usable.
     if (type === "tabs") {
       builderStore.addEntity({ type: "tab", attributes: { label: "Tab 1" }, parentId: entity.id } as Parameters<typeof builderStore.addEntity>[0]);
