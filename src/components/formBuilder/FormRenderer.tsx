@@ -10,6 +10,7 @@ import {
 import { repairSchema, type FormSchema } from "../../lib/formSchema";
 import DOMPurify from "dompurify";
 import { Modal } from "../ui/modal";
+import FieldTooltip from "./FieldTooltip";
 
 type Attrs = Record<string, unknown>;
 type SchemaEntity = { type: string; attributes: Attrs };
@@ -427,28 +428,6 @@ const applyTextTransforms = (a: Record<string, unknown>, val: string): string =>
   return v;
 };
 
-// Hover/focus info icon next to a field label, showing the `tooltip` attribute.
-function InfoTooltip({ text }: { text: string }) {
-  return (
-    <span className="group/tt relative ml-1 inline-flex align-middle">
-      <button
-        type="button"
-        aria-label={text}
-        className="inline-flex size-4 items-center justify-center rounded-full border border-gray-300 text-[10px] font-semibold leading-none text-gray-400 hover:border-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-gray-600 dark:text-gray-500"
-        onClick={(e) => e.preventDefault()}
-      >
-        i
-      </button>
-      <span
-        role="tooltip"
-        className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1 hidden w-max max-w-xs -translate-x-1/2 whitespace-normal rounded-lg bg-gray-800 px-2 py-1 text-xs font-normal text-white shadow-lg group-hover/tt:block group-focus-within/tt:block dark:bg-gray-700"
-      >
-        {text}
-      </span>
-    </span>
-  );
-}
-
 export default function FormRenderer({ schema }: { schema: string }) {
   const parsed = useMemo(() => parse(schema), [schema]);
   const { entities, root } = parsed;
@@ -804,7 +783,7 @@ export default function FormRenderer({ schema }: { schema: string }) {
         <div key={id}>
           <label htmlFor={controlId} id={labelId} className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
             {renderControl(e, values[id], (v) => set(id, v), disabled, a11y)}
-            {hideLabel ? null : (<span>{asStr(a.label)}{required ? <span className="text-error-500"> *</span> : null}{contentLink(e)}{asStr(a.tooltip) ? <InfoTooltip text={asStr(a.tooltip)} /> : null}</span>)}
+            {hideLabel ? null : (<span>{asStr(a.label)}{required ? <span className="text-error-500"> *</span> : null}{contentLink(e)}<FieldTooltip text={asStr(a.tooltip)} /></span>)}
           </label>
           {errors[id] ? <p id={errId} role="alert" className="mt-1 text-xs text-error-500">{errors[id]}</p> : null}
         </div>
@@ -826,7 +805,7 @@ export default function FormRenderer({ schema }: { schema: string }) {
       <div key={id}>
         {hideLabel ? null : (
           <label htmlFor={labelable ? controlId : undefined} id={labelId} className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-            {asStr(a.label)}{required ? <span className="text-error-500"> *</span> : null}{contentLink(e)}{asStr(a.tooltip) ? <InfoTooltip text={asStr(a.tooltip)} /> : null}
+            {asStr(a.label)}{required ? <span className="text-error-500"> *</span> : null}{contentLink(e)}<FieldTooltip text={asStr(a.tooltip)} />
           </label>
         )}
         {renderControl(e, values[id], (v) => set(id, v), disabled, a11y)}

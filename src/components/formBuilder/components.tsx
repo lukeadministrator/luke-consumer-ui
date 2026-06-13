@@ -6,6 +6,7 @@ import {
 } from "@coltorapps/builder-react";
 import * as A from "./attributes";
 import * as E from "./entities";
+import FieldTooltip from "./FieldTooltip";
 
 /* ------------------------------------------------------------------ */
 /* Styling + small inputs                                              */
@@ -386,13 +387,14 @@ export const EditorAttribute = createAttributeComponent(A.editorAttribute, (p) =
 /* Field previews                                                      */
 /* ------------------------------------------------------------------ */
 
-function FieldPreview({ label, required, description, children }: { label?: string; required?: boolean; description?: string; children: React.ReactNode }) {
+function FieldPreview({ label, required, description, tooltip, children }: { label?: string; required?: boolean; description?: string; tooltip?: string; children: React.ReactNode }) {
   return (
     <div>
       {label ? (
         <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
           {label}
           {required ? <span className="text-error-500"> *</span> : null}
+          <FieldTooltip text={tooltip} />
         </label>
       ) : null}
       {children}
@@ -401,8 +403,8 @@ function FieldPreview({ label, required, description, children }: { label?: stri
   );
 }
 
-const text = (entity: { attributes: { label: string; placeholder?: string; required?: boolean; description?: string; prefix?: string; suffix?: string } }, type = "text") => (
-  <FieldPreview label={entity.attributes.label} required={entity.attributes.required} description={entity.attributes.description}>
+const text = (entity: { attributes: { label: string; placeholder?: string; required?: boolean; description?: string; tooltip?: string; prefix?: string; suffix?: string } }, type = "text") => (
+  <FieldPreview label={entity.attributes.label} required={entity.attributes.required} description={entity.attributes.description} tooltip={entity.attributes.tooltip}>
     <div className="flex items-center gap-1">
       {entity.attributes.prefix ? <span className="text-sm text-gray-400">{entity.attributes.prefix}</span> : null}
       <input readOnly tabIndex={-1} type={type} placeholder={entity.attributes.placeholder} className={previewClass} />
@@ -413,7 +415,7 @@ const text = (entity: { attributes: { label: string; placeholder?: string; requi
 
 export const TextFieldEntity = createEntityComponent(E.textFieldEntity, (p) => text(p.entity));
 export const TextareaEntity = createEntityComponent(E.textareaEntity, (p) => (
-  <FieldPreview label={p.entity.attributes.label} required={p.entity.attributes.required} description={p.entity.attributes.description}>
+  <FieldPreview label={p.entity.attributes.label} required={p.entity.attributes.required} description={p.entity.attributes.description} tooltip={p.entity.attributes.tooltip}>
     <textarea readOnly tabIndex={-1} placeholder={p.entity.attributes.placeholder} className={`${previewClass} h-20 py-2`} />
   </FieldPreview>
 ));
@@ -424,12 +426,12 @@ export const UrlEntity = createEntityComponent(E.urlEntity, (p) => text(p.entity
 export const PhoneEntity = createEntityComponent(E.phoneEntity, (p) => text(p.entity, "tel"));
 export const CurrencyEntity = createEntityComponent(E.currencyEntity, (p) => text(p.entity, "number"));
 export const DatetimeEntity = createEntityComponent(E.datetimeEntity, (p) => (
-  <FieldPreview label={p.entity.attributes.label} required={p.entity.attributes.required} description={p.entity.attributes.description}>
+  <FieldPreview label={p.entity.attributes.label} required={p.entity.attributes.required} description={p.entity.attributes.description} tooltip={p.entity.attributes.tooltip}>
     <input readOnly tabIndex={-1} type="datetime-local" className={previewClass} />
   </FieldPreview>
 ));
 export const TimeEntity = createEntityComponent(E.timeEntity, (p) => (
-  <FieldPreview label={p.entity.attributes.label} required={p.entity.attributes.required} description={p.entity.attributes.description}>
+  <FieldPreview label={p.entity.attributes.label} required={p.entity.attributes.required} description={p.entity.attributes.description} tooltip={p.entity.attributes.tooltip}>
     <input readOnly tabIndex={-1} type="time" className={previewClass} />
   </FieldPreview>
 ));
@@ -450,19 +452,19 @@ export const DayEntity = createEntityComponent(E.dayEntity, (p) => {
   );
 });
 export const TagsFieldEntity = createEntityComponent(E.tagsFieldEntity, (p) => (
-  <FieldPreview label={p.entity.attributes.label} required={p.entity.attributes.required} description={p.entity.attributes.description}>
+  <FieldPreview label={p.entity.attributes.label} required={p.entity.attributes.required} description={p.entity.attributes.description} tooltip={p.entity.attributes.tooltip}>
     <input readOnly tabIndex={-1} placeholder={p.entity.attributes.placeholder ?? "Add tags…"} className={previewClass} />
   </FieldPreview>
 ));
 export const SelectEntity = createEntityComponent(E.selectEntity, (p) => (
-  <FieldPreview label={p.entity.attributes.label} required={p.entity.attributes.required} description={p.entity.attributes.description}>
+  <FieldPreview label={p.entity.attributes.label} required={p.entity.attributes.required} description={p.entity.attributes.description} tooltip={p.entity.attributes.tooltip}>
     <select disabled tabIndex={-1} className={previewClass}>
       {(p.entity.attributes.options ?? []).map((o, i) => <option key={i}>{normOpt(o).label}</option>)}
     </select>
   </FieldPreview>
 ));
 export const RadioEntity = createEntityComponent(E.radioEntity, (p) => (
-  <FieldPreview label={p.entity.attributes.label} required={p.entity.attributes.required} description={p.entity.attributes.description}>
+  <FieldPreview label={p.entity.attributes.label} required={p.entity.attributes.required} description={p.entity.attributes.description} tooltip={p.entity.attributes.tooltip}>
     <div className={`pointer-events-none ${p.entity.attributes.inline ? "flex flex-wrap gap-4" : "space-y-2"}`}>
       {(p.entity.attributes.options ?? []).map((o, i) => (
         <span key={i} className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
@@ -473,7 +475,7 @@ export const RadioEntity = createEntityComponent(E.radioEntity, (p) => (
   </FieldPreview>
 ));
 export const SelectBoxesEntity = createEntityComponent(E.selectBoxesEntity, (p) => (
-  <FieldPreview label={p.entity.attributes.label} required={p.entity.attributes.required} description={p.entity.attributes.description}>
+  <FieldPreview label={p.entity.attributes.label} required={p.entity.attributes.required} description={p.entity.attributes.description} tooltip={p.entity.attributes.tooltip}>
     <div className={`pointer-events-none ${p.entity.attributes.inline ? "flex flex-wrap gap-4" : "space-y-2"}`}>
       {(p.entity.attributes.options ?? []).map((o, i) => (
         <span key={i} className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
@@ -484,10 +486,11 @@ export const SelectBoxesEntity = createEntityComponent(E.selectBoxesEntity, (p) 
   </FieldPreview>
 ));
 export const CheckboxEntity = createEntityComponent(E.checkboxEntity, (p) => (
-  <label className="pointer-events-none flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-    <span className="size-4 rounded border border-gray-300 dark:border-gray-600" />
+  <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+    <span className="pointer-events-none size-4 rounded border border-gray-300 dark:border-gray-600" />
     {p.entity.attributes.label}
     {p.entity.attributes.required ? <span className="text-error-500"> *</span> : null}
+    <FieldTooltip text={p.entity.attributes.tooltip} />
   </label>
 ));
 export const ButtonEntity = createEntityComponent(E.buttonEntity, (p) => (
@@ -496,14 +499,14 @@ export const ButtonEntity = createEntityComponent(E.buttonEntity, (p) => (
   </button>
 ));
 export const FileEntity = createEntityComponent(E.fileEntity, (p) => (
-  <FieldPreview label={p.entity.attributes.label} required={p.entity.attributes.required} description={p.entity.attributes.description}>
+  <FieldPreview label={p.entity.attributes.label} required={p.entity.attributes.required} description={p.entity.attributes.description} tooltip={p.entity.attributes.tooltip}>
     <div className="pointer-events-none flex h-20 items-center justify-center rounded-lg border border-dashed border-gray-300 text-sm text-gray-400 dark:border-gray-600">
       Click or drop files to upload
     </div>
   </FieldPreview>
 ));
 export const SignatureEntity = createEntityComponent(E.signatureEntity, (p) => (
-  <FieldPreview label={p.entity.attributes.label} required={p.entity.attributes.required} description={p.entity.attributes.description}>
+  <FieldPreview label={p.entity.attributes.label} required={p.entity.attributes.required} description={p.entity.attributes.description} tooltip={p.entity.attributes.tooltip}>
     <div className="pointer-events-none flex h-24 items-center justify-center rounded-lg border border-gray-300 bg-gray-50 text-sm italic text-gray-400 dark:border-gray-600 dark:bg-white/5">
       ✍︎ Sign here
     </div>
