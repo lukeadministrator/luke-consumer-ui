@@ -183,9 +183,9 @@ const STATUS_BADGE: Record<FormStatus, string> = {
   archived: "bg-amber-50 text-amber-600 dark:bg-amber-500/15",
 };
 
-function Designer({ tenant, formId, form, reload, onSchema, aiBusy }: {
+function Designer({ tenant, formId, form, reload, onSchema, building }: {
   tenant: string; formId: string; form: StoredForm; reload: () => void;
-  onSchema?: (s: BuilderSchemaLike) => void; aiBusy?: boolean;
+  onSchema?: (s: BuilderSchemaLike) => void; building?: boolean;
 }) {
   const navigate = useNavigate();
   const { session } = useAuth();
@@ -577,7 +577,7 @@ function Designer({ tenant, formId, form, reload, onSchema, aiBusy }: {
             </Canvas>
             </div>
             </div>
-            {aiBusy && <AiProcessingOverlay />}
+            {building && <AiProcessingOverlay />}
             {/* Floating scroll-to-top, anchored to the bottom of the canvas. */}
             {showScrollTop && (
               <div className="pointer-events-none sticky bottom-6 z-20 flex justify-end pr-1">
@@ -688,7 +688,9 @@ export default function FormBuilderPage() {
   const [loading, setLoading] = useState(true);
   // AI panel state lives here (above the keyed Designer) so chat history and the
   // panel survive the builder remount that applying a change triggers.
-  const [aiBusy, setAiBusy] = useState(false);
+  // `aiBuilding` drives the canvas "building" animation — it's true ONLY while an
+  // actual form change is being applied, so it never shows for off-topic chat.
+  const [aiBuilding, setAiBuilding] = useState(false);
   const [liveSchema, setLiveSchema] = useState<BuilderSchemaLike | null>(null);
   // Bumped to remount ONLY the builder (load a new schema into it) without the
   // full-page reload — keeps the docked chat panel and its history mounted.
@@ -696,10 +698,14 @@ export default function FormBuilderPage() {
 
   // Apply an AI-produced schema locally: the agent already saved the draft, so
   // just swap it into the form and remount the builder. No refetch, no loading.
+  // Only called when the form actually changed (the panel skips no-op turns), so
+  // this is exactly where the build animation belongs — a brief reveal flourish.
   const applyAiSchema = (schema: BuilderSchemaLike, _title: string) => {
+    setAiBuilding(true);
     setForm((f) => (f ? { ...f, schema: JSON.stringify(schema) } : f));
     setLiveSchema(schema);
     setDesignerNonce((n) => n + 1);
+    window.setTimeout(() => setAiBuilding(false), 1100);
   };
 
   // Re-read the session on entry so the editor reflects the caller's *current*
@@ -735,7 +741,7 @@ export default function FormBuilderPage() {
           form={form}
           reload={() => setReloadKey((k) => k + 1)}
           onSchema={setLiveSchema}
-          aiBusy={aiBusy}
+          building={aiBuilding}
         />
       </div>
       {/* Permanent LukeTalks rail — sticky and viewport-tall so it stays fully
@@ -748,7 +754,6 @@ export default function FormBuilderPage() {
             formName={form.name}
             schema={liveSchema}
             onApplied={applyAiSchema}
-            onBusyChange={setAiBusy}
           />
         </aside>
       )}

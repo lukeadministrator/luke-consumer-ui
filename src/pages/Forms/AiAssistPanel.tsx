@@ -21,8 +21,9 @@ const SUGGESTIONS = [
  * drives luke-form-agent. It lives in the parent, above the keyed Designer, so
  * its history survives the builder remount each applied change triggers. On
  * success it saveDrafts the new schema and hands it up via onApplied(schema,
- * title), which the parent applies locally (no page reload). While a request is
- * in flight it reports busy up via onBusyChange so the canvas can show a status.
+ * title), which the parent applies locally (no page reload). onApplied is the
+ * signal that an actual form change happened — the parent uses it to play the
+ * build animation, so off-topic chat never triggers it.
  */
 export default function AiAssistPanel({
   tenant,
@@ -30,14 +31,12 @@ export default function AiAssistPanel({
   formName,
   schema,
   onApplied,
-  onBusyChange,
 }: {
   tenant: string;
   formId: string;
   formName: string;
   schema: BuilderSchemaLike | null;
   onApplied: (schema: BuilderSchemaLike, title: string) => void;
-  onBusyChange?: (busy: boolean) => void;
 }) {
   const { session } = useAuth();
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -56,7 +55,6 @@ export default function AiAssistPanel({
     setMessages((m) => [...m, { role: "you", text: msg }]);
     setInput("");
     setBusy(true);
-    onBusyChange?.(true);
     try {
       const result = await generateSchema(msg, schema ?? EMPTY, formName, session?.userId);
       setBrain(result.brain);
@@ -73,7 +71,6 @@ export default function AiAssistPanel({
       setMessages((m) => [...m, { role: "ai", error: true, text: (e as Error).message }]);
     } finally {
       setBusy(false);
-      onBusyChange?.(false);
     }
   };
 
