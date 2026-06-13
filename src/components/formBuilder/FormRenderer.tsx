@@ -6,10 +6,11 @@ import {
   evaluateValidation,
   type Scope,
 } from "../../lib/expression";
-import { repairSchema, type FormSchema } from "../../lib/formSchema";
+import { readSubmitMessage, repairSchema, type FormSchema } from "../../lib/formSchema";
 import DOMPurify from "dompurify";
 import { Modal } from "../ui/modal";
 import FieldTooltip from "./FieldTooltip";
+import SubmissionSuccess from "./SubmissionSuccess";
 
 type Attrs = Record<string, unknown>;
 type SchemaEntity = { type: string; attributes: Attrs };
@@ -426,6 +427,7 @@ export default function FormRenderer({
 }) {
   const parsed = useMemo(() => parse(schema), [schema]);
   const { entities, root } = parsed;
+  const submitMessage = useMemo(() => readSubmitMessage(schema), [schema]);
 
   const [values, setValues] = useState<Record<string, unknown>>(() => {
     const init: Record<string, unknown> = {};
@@ -1053,9 +1055,12 @@ export default function FormRenderer({
         <button type="submit" disabled={submitting} className="rounded-lg bg-brand-500 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50">{submitting ? "Submitting…" : "Submit"}</button>
       )}
       {submitted && (
-        <div className="rounded-xl border border-success-500/30 bg-success-50 p-4 dark:bg-success-500/10" role="status">
-          <p className="mb-2 text-sm font-medium text-success-600">Submitted ✓</p>
-          <pre className="overflow-auto text-xs text-gray-600 dark:text-gray-300">{JSON.stringify(submitted, null, 2)}</pre>
+        <div>
+          <SubmissionSuccess message={submitMessage} />
+          <details className="mt-2">
+            <summary className="cursor-pointer text-center text-xs text-gray-400">Submitted data (preview)</summary>
+            <pre className="mt-2 overflow-auto rounded-lg bg-gray-50 p-3 text-xs text-gray-600 dark:bg-white/5 dark:text-gray-300">{JSON.stringify(submitted, null, 2)}</pre>
+          </details>
         </div>
       )}
 

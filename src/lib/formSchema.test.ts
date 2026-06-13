@@ -12,6 +12,8 @@ import {
   validateSchema,
   hasBlockingProblems,
   repairSchema,
+  readSubmitMessage,
+  readSettings,
   type FormSchema,
 } from "./formSchema";
 
@@ -247,6 +249,20 @@ describe("validateSchema", () => {
   it("warns about orphaned entities", () => {
     const schema: FormSchema = { entities: { a: field("email"), b: field("name") }, root: ["a"] };
     expect(validateSchema(schema).some((p) => p.code === "orphan" && p.entityId === "b")).toBe(true);
+  });
+});
+
+describe("readSubmitMessage / readSettings", () => {
+  it("reads the submit message from schema settings", () => {
+    const raw = JSON.stringify({ entities: {}, root: [], settings: { submitMessage: "Thanks!" } });
+    expect(readSubmitMessage(raw)).toBe("Thanks!");
+    expect(readSettings(raw).submitMessage).toBe("Thanks!");
+  });
+  it("returns empty when no settings/message or bad input", () => {
+    expect(readSubmitMessage(JSON.stringify({ entities: {}, root: [] }))).toBe("");
+    expect(readSubmitMessage("not json")).toBe("");
+    expect(readSubmitMessage(null)).toBe("");
+    expect(readSettings("{}")).toEqual({});
   });
 });
 

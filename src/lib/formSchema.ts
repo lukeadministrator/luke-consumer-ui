@@ -301,6 +301,29 @@ export function hasBlockingProblems(schema: FormSchema | null | undefined): bool
   return validateSchema(schema).some((p) => p.severity === "error");
 }
 
+// ── Form-level settings ──────────────────────────────────────────────────────
+// Stored alongside `entities`/`root` in the schema JSON (a `settings` sibling).
+// The builder preserves it across saves; the renderer reads it after submit.
+export type FormSettings = { submitMessage?: string };
+
+/** Read form-level settings from a schema JSON string (tolerant of anything). */
+export function readSettings(rawSchema: string | null | undefined): FormSettings {
+  if (!rawSchema) return {};
+  try {
+    const s = JSON.parse(rawSchema);
+    const settings = s && typeof s === "object" ? s.settings : null;
+    return settings && typeof settings === "object" ? (settings as FormSettings) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** The custom submission message for a form, or "" when none is set. */
+export function readSubmitMessage(rawSchema: string | null | undefined): string {
+  const m = readSettings(rawSchema).submitMessage;
+  return typeof m === "string" ? m : "";
+}
+
 /**
  * Return a structurally-sound copy of the schema so the builder/renderer can
  * never choke on a corrupted draft. It:

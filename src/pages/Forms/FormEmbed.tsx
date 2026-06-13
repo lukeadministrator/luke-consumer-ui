@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router";
 import FormRenderer from "../../components/formBuilder/FormRenderer";
+import SubmissionSuccess from "../../components/formBuilder/SubmissionSuccess";
+import { readSubmitMessage } from "../../lib/formSchema";
 import { getEmbedForm, submitEmbed, type EmbedForm } from "../../lib/publicEmbedApi";
 
 // Public, standalone page rendered inside the host's <iframe src=".../embed/:token">.
@@ -43,10 +45,7 @@ export default function FormEmbed() {
         {loading ? (
           <p className="py-12 text-center text-sm text-gray-400">Loading…</p>
         ) : done ? (
-          <div className="py-12 text-center">
-            <p className="mb-1 text-lg font-semibold text-success-600">Submitted ✓</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Thanks — your response has been recorded.</p>
-          </div>
+          <SubmissionSuccess message={form ? readSubmitMessage(form.schema) : undefined} />
         ) : error && !form ? (
           <p className="py-12 text-center text-sm text-error-500">{error}</p>
         ) : form ? (

@@ -4,6 +4,8 @@ import PageMeta from "../../components/common/PageMeta";
 import Button from "../../components/ui/button/Button";
 import { useAuth } from "../../context/AuthContext";
 import FormRenderer from "../../components/formBuilder/FormRenderer";
+import SubmissionSuccess from "../../components/formBuilder/SubmissionSuccess";
+import { readSubmitMessage } from "../../lib/formSchema";
 import {
   createInstance,
   isOpen,
@@ -102,10 +104,11 @@ export default function FormFill() {
               <Button size="sm" variant="outline" onClick={() => navigate("/forms")} className="mt-4">Back to forms</Button>
             </div>
           ) : done ? (
-            <div className="py-10 text-center">
-              <p className="mb-1 text-lg font-semibold text-success-600">Submitted ✓</p>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Thanks — your response has been recorded.</p>
-              <Button size="sm" variant="outline" onClick={() => navigate("/forms")} className="mt-4">Back to forms</Button>
+            <div>
+              <SubmissionSuccess message={view ? readSubmitMessage(view.schema) : undefined} />
+              <div className="text-center">
+                <Button size="sm" variant="outline" onClick={() => navigate("/forms")}>Back to forms</Button>
+              </div>
             </div>
           ) : !open ? (
             <p className="py-10 text-center text-sm text-gray-400">

@@ -63,6 +63,7 @@ import {
   isValidKey,
   keyOf,
   orderedIds,
+  readSettings,
   repairSchema,
   sanitizeKey,
   uniqueKey,
@@ -324,6 +325,11 @@ function Designer({ tenant, formId, form, reload, onSchema, building, suppressFl
   const [formSettingsOpen, setFormSettingsOpen] = useState(false);
   const [formName, setFormName] = useState(form.name);
   const [formDesc, setFormDesc] = useState(form.description ?? "");
+  // Form-level "thank you" message, stored in the schema's settings. A ref keeps
+  // the autosave/checkin closures reading the latest value.
+  const [submitMessage, setSubmitMessage] = useState(() => readSettings(form.schema).submitMessage ?? "");
+  const submitMessageRef = useRef(submitMessage);
+  useEffect(() => { submitMessageRef.current = submitMessage; }, [submitMessage]);
   const [paletteQuery, setPaletteQuery] = useState("");
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [problemsOpen, setProblemsOpen] = useState(false);
@@ -443,6 +449,12 @@ function Designer({ tenant, formId, form, reload, onSchema, building, suppressFl
     setLockedByOther(null);
   };
 
+  // Merge the form-level settings (submit message) into a schema before saving,
+  // so the renderer can read it after submit. Reads the latest message via ref.
+  const withSettings = (schemaObj: unknown) =>
+    JSON.stringify({ ...(schemaObj as object), settings: { submitMessage: submitMessageRef.current } });
+  const currentSchemaJson = () => withSettings(builderStore.getSchema());
+
   useEffect(() => {
     if (!canEdit) return; // view-only: never persist edits.
     return builderStore.subscribe((data) => {
@@ -451,7 +463,7 @@ function Designer({ tenant, formId, form, reload, onSchema, building, suppressFl
       unsavedRef.current = true;
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
       saveTimer.current = window.setTimeout(() => {
-        void saveDraft(tenant, formId, JSON.stringify(data.schema)).then(() => {
+        void saveDraft(tenant, formId, withSettings(data.schema)).then(() => {
           unsavedRef.current = false;
           setSaved(true);
         });
@@ -471,8 +483,9 @@ function Designer({ tenant, formId, form, reload, onSchema, building, suppressFl
     }
     if (canEdit && unsavedRef.current) {
       unsavedRef.current = false;
-      void saveDraft(tenant, formId, JSON.stringify(builderStore.getSchema()));
+      void saveDraft(tenant, formId, currentSchemaJson());
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [builderStore, tenant, formId, canEdit, suppressFlushRef]);
 
   // Warn before a full page unload (tab close / refresh) with unsaved edits.
@@ -489,15 +502,26 @@ function Designer({ tenant, formId, form, reload, onSchema, building, suppressFl
 
   const flushSave = async () => {
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    await saveDraft(tenant, formId, JSON.stringify(builderStore.getSchema()));
+    await saveDraft(tenant, formId, currentSchemaJson());
     unsavedRef.current = false;
     setSaved(true);
+  };
+
+  // Edit the form-level submission message (persisted in the schema, debounced).
+  const onSubmitMessageChange = (v: string) => {
+    setSubmitMessage(v);
+    submitMessageRef.current = v;
+    setSaved(false); setDirty(true); unsavedRef.current = true;
+    if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      void saveDraft(tenant, formId, currentSchemaJson()).then(() => { unsavedRef.current = false; setSaved(true); });
+    }, 600);
   };
 
   const handleCheckIn = async () => {
     if (blocking.length) { setProblemsOpen(true); return; } // never check in a broken schema
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    const artifact = await checkIn(tenant, formId, JSON.stringify(builderStore.getSchema()));
+    const artifact = await checkIn(tenant, formId, currentSchemaJson());
     if (artifact) {
       setVersion(artifact.version);
       if (publishedVersion === undefined) setPublishedVersion(artifact.version);
@@ -666,7 +690,7 @@ function Designer({ tenant, formId, form, reload, onSchema, building, suppressFl
   };
 
   const openPreview = () => {
-    setPreviewSchema(JSON.stringify(builderStore.getSchema()));
+    setPreviewSchema(currentSchemaJson());
     setPreviewOpen(true);
   };
 
@@ -931,9 +955,21 @@ function Designer({ tenant, formId, form, reload, onSchema, building, suppressFl
             <Label>Form name</Label>
             <Input value={formName} onChange={(e) => setFormName(e.target.value)} disabled={!canEdit} />
           </div>
-          <div className="mb-6">
+          <div className="mb-4">
             <Label>Description</Label>
             <Input value={formDesc} onChange={(e) => setFormDesc(e.target.value)} placeholder="Optional" disabled={!canEdit} />
+          </div>
+          <div className="mb-6">
+            <Label>Submission message</Label>
+            <textarea
+              value={submitMessage}
+              onChange={(e) => onSubmitMessageChange(e.target.value)}
+              disabled={!canEdit}
+              rows={3}
+              placeholder="Thank you! Your response has been recorded."
+              className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/20 disabled:opacity-60 dark:border-gray-700 dark:text-white/90"
+            />
+            <p className="mt-1 text-xs text-gray-400">Shown with a success animation after the form is submitted. Leave blank for the default.</p>
           </div>
           <div className="flex justify-end gap-3">
             <Button variant="outline" onClick={() => setFormSettingsOpen(false)}>{canEdit ? "Cancel" : "Close"}</Button>
@@ -1024,7 +1060,9 @@ export default function FormBuilderPage() {
     // so force keys to camelCase (rewriting any references) before trusting the
     // schema — then persist the cleaned draft so the backend matches the builder.
     const normalized = camelCaseKeys(schema as unknown as FormSchema) as unknown as BuilderSchemaLike;
-    const json = JSON.stringify(normalized);
+    // Preserve the form-level settings (submit message) — the agent only returns
+    // entities/root, so re-merge what's already on the form.
+    const json = JSON.stringify({ ...normalized, settings: readSettings(form?.schema) });
     suppressFlushRef.current = true; // the outgoing builder must not re-save stale state
     setAiBuilding(true);
     setForm((f) => (f ? { ...f, schema: json } : f));
