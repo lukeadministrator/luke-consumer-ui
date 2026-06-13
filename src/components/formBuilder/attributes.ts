@@ -52,6 +52,17 @@ export const contentAttribute = createAttribute({
   validate: (value) => z.string().optional().parse(value),
 });
 
+// Rich help content shown in a modal — a clickable link (e.g. "Terms and
+// Conditions") next to a selection field that opens the HTML in a dialog.
+export const contentLinkTextAttribute = createAttribute({
+  name: "contentLinkText",
+  validate: (value) => z.string().optional().parse(value),
+});
+export const contentHtmlAttribute = createAttribute({
+  name: "contentHtml",
+  validate: (value) => z.string().optional().parse(value),
+});
+
 /* ----- Data ----- */
 export const defaultValueAttribute = createAttribute({
   name: "defaultValue",

@@ -10,6 +10,8 @@ import {
   clearOnHideAttribute,
   conditionalAttribute,
   contentAttribute,
+  contentHtmlAttribute,
+  contentLinkTextAttribute,
   customClassAttribute,
   customConditionalAttribute,
   customDefaultValueAttribute,
@@ -175,7 +177,7 @@ const passwordFieldAttrs = [
 export const passwordEntity = createEntity({ name: "password", attributes: passwordFieldAttrs, validate: str });
 
 const checkboxFieldAttrs = [
-  labelAttribute, hideLabelAttribute, descriptionAttribute, tooltipAttribute, customClassAttribute, tabIndexAttribute, hiddenAttribute, disabledAttribute,
+  labelAttribute, hideLabelAttribute, descriptionAttribute, tooltipAttribute, contentLinkTextAttribute, contentHtmlAttribute, customClassAttribute, tabIndexAttribute, hiddenAttribute, disabledAttribute,
   defaultCheckedAttribute, persistentAttribute, clearOnHideAttribute, customDefaultValueAttribute,
   requiredAttribute, errorLabelAttribute, customMessageAttribute,
   calculateValueAttribute, allowCalculateOverrideAttribute, customValidationAttribute, ...api,
@@ -184,7 +186,7 @@ export const checkboxEntity = createEntity({ name: "checkbox", attributes: check
 
 // Shared base for Select / Radio / Select Boxes.
 const choiceFieldAttrs = [
-  labelAttribute, hideLabelAttribute, ...displayBase, tabIndexAttribute,
+  labelAttribute, hideLabelAttribute, contentLinkTextAttribute, contentHtmlAttribute, ...displayBase, tabIndexAttribute,
   optionsAttribute, defaultValueAttribute, persistentAttribute, clearOnHideAttribute, customDefaultValueAttribute,
   requiredAttribute, errorLabelAttribute, customMessageAttribute, validateOnAttribute, uniqueAttribute,
   calculateValueAttribute, allowCalculateOverrideAttribute, customValidationAttribute, ...api,

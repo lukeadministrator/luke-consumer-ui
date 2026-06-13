@@ -156,6 +156,19 @@ export const KeyAttribute = createAttributeComponent(A.keyAttribute, (p) => (
 export const TagsAttribute = createAttributeComponent(A.tagsAttribute, (p) => (
   <TextInput label="Field Tags (comma separated)" value={p.attribute.value ?? ""} onChange={p.setValue} error={p.attribute.error} />
 ));
+export const ContentLinkTextAttribute = createAttributeComponent(A.contentLinkTextAttribute, (p) => (
+  <TextInput label="Help link text (e.g. Terms and Conditions)" value={p.attribute.value ?? ""} onChange={p.setValue} error={p.attribute.error} />
+));
+export const ContentHtmlAttribute = createAttributeComponent(A.contentHtmlAttribute, (p) => (
+  <Row label="Help content (HTML — opens in a modal when the link is clicked)" error={p.attribute.error}>
+    <textarea
+      className={`${editorInputClass} min-h-[120px] font-mono`}
+      value={p.attribute.value ?? ""}
+      onChange={(e) => p.setValue(e.target.value)}
+      placeholder="<h3>Terms</h3><p>Your terms and conditions…</p>"
+    />
+  </Row>
+));
 type Opt = { label: string; value: string };
 export const normOpt = (o: unknown): Opt =>
   typeof o === "string"
@@ -712,17 +725,17 @@ const passwordPanel = makePanel({
   Logic: choiceLogic,
 });
 const checkboxPanel = makePanel({
-  Display: [LabelAttribute, HideLabelAttribute, DescriptionAttribute, TooltipAttribute, CustomClassAttribute, TabIndexAttribute, HiddenAttribute, DisabledAttribute],
+  Display: [LabelAttribute, HideLabelAttribute, ContentLinkTextAttribute, ContentHtmlAttribute, DescriptionAttribute, TooltipAttribute, CustomClassAttribute, TabIndexAttribute, HiddenAttribute, DisabledAttribute],
   Data: [DefaultCheckedAttribute, CustomDefaultValueAttribute, PersistentAttribute, ClearOnHideAttribute],
   Validation: [RequiredAttribute, ErrorLabelAttribute, CustomMessageAttribute],
   API: [KeyAttribute, TagsAttribute],
   Conditional: [ConditionalAttribute],
   Logic: choiceLogic,
 });
-const choiceDisplay = [LabelAttribute, HideLabelAttribute, ...displayCommon, TabIndexAttribute];
+const choiceDisplay = [LabelAttribute, HideLabelAttribute, ContentLinkTextAttribute, ContentHtmlAttribute, ...displayCommon, TabIndexAttribute];
 const choiceValidation = [RequiredAttribute, ErrorLabelAttribute, CustomMessageAttribute, ValidateOnAttribute, UniqueAttribute];
 const selectPanel = makePanel({
-  Display: [LabelAttribute, HideLabelAttribute, PlaceholderAttribute, SearchableAttribute, ...displayCommon, TabIndexAttribute],
+  Display: [LabelAttribute, HideLabelAttribute, PlaceholderAttribute, SearchableAttribute, ContentLinkTextAttribute, ContentHtmlAttribute, ...displayCommon, TabIndexAttribute],
   Data: [OptionsAttribute, DefaultValueAttribute, MultipleAttribute, CustomDefaultValueAttribute, PersistentAttribute, ClearOnHideAttribute],
   Validation: choiceValidation,
   API: [KeyAttribute, TagsAttribute],

@@ -18,7 +18,8 @@ Two layers:
 | B | Runtime correctness (calc, grid, clearOnHide) | UT-EXPR-EVAL-\* | E2E-B-\* |
 | C | Schema robustness (repair on load) | UT-REPAIR-\* | E2E-C-\* |
 | D | Builder UX (problems, gating, expr, leave-guard) | UT-VALID-\*, UT-EXPR-\* | E2E-D-\* |
-| E | Accessibility | — | E2E-E-\* |
+| E | Accessibility + field tooltips | — | E2E-E-\* |
+| F | Field help content (HTML modal) | — | E2E-F-\* |
 
 Statuses: ✅ automated · ⬜ manual (pending Playwright).
 
@@ -322,6 +323,43 @@ button = `aria-haspopup/expanded`; tags input; signature canvas is focusable).
 
 ✅ Our validation message shows (no native browser bubble); submit isn't hijacked
 by native `type=email`/`url`/`date` validation.
+
+**E2E-E-07 — Field tooltip (hover/focus)** · P1
+1. Set a field's **Tooltip** attribute. Preview → hover (and Tab to) the `ⓘ`
+   icon next to the label.
+
+✅ The tooltip text appears on hover and on keyboard focus; the icon has an
+`aria-label` of the text.
+
+---
+
+### Tier F — Field help content (HTML modal)
+
+**E2E-F-01 — Selection field HTML content opens a modal** · P0
+1. On a **Checkbox** (also Radio / Select Boxes / Select), set **Help link text**
+   = `Terms and Conditions` and **Help content (HTML)** =
+   `<h3>Terms</h3><p>...</p><ul><li>a</li></ul>`.
+2. Preview → click the `Terms and Conditions` link next to the field.
+
+✅ A modal opens showing the HTML **rendered** (heading, paragraph, list), with
+the link text as the title; Esc / backdrop closes it.
+
+**E2E-F-02 — Link click does not toggle the checkbox** · P0
+1. From E2E-F-01, click the `Terms and Conditions` link on a checkbox.
+
+✅ The modal opens and the checkbox state is unchanged (link click is isolated).
+
+**E2E-F-03 — HTML is sanitized (no XSS)** · P0
+1. Set Help content to `<img src=x onerror="alert(1)"><script>alert(2)</script><b>ok</b>`.
+2. Preview → open the modal.
+
+✅ No alert fires; `<script>`/`onerror` are stripped; safe markup (`<b>ok</b>`)
+still renders (DOMPurify).
+
+**E2E-F-04 — No link when content is incomplete** · P2
+1. Set only the link text (no HTML), or only HTML (no link text).
+
+✅ No link renders (both are required to show the trigger).
 
 ---
 
