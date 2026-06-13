@@ -705,7 +705,7 @@ export default function FormBuilderPage() {
     setForm((f) => (f ? { ...f, schema: JSON.stringify(schema) } : f));
     setLiveSchema(schema);
     setDesignerNonce((n) => n + 1);
-    window.setTimeout(() => setAiBuilding(false), 1100);
+    window.setTimeout(() => setAiBuilding(false), 1300);
   };
 
   // Re-read the session on entry so the editor reflects the caller's *current*
