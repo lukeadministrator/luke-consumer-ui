@@ -23,10 +23,17 @@ const STATE_BADGE: Record<InstanceState, string> = {
   CANCELLED: "bg-error-50 text-error-500 dark:bg-error-500/15",
 };
 const fmt = (ms?: number) => (ms ? new Date(ms).toLocaleString() : "—");
-const pidOf = (i: FormInstance) => {
-  const v = i.context?.processInstanceId;
+const ctxStr = (i: FormInstance, k: string): string | null => {
+  const v = i.context?.[k];
   return typeof v === "string" && v ? v : null;
 };
+const pidOf = (i: FormInstance) => ctxStr(i, "processInstanceId");
+
+function processBadge(i: FormInstance) {
+  if (pidOf(i)) return <span className="inline-flex items-center gap-1 text-xs text-success-600"><span className="size-1.5 rounded-full bg-success-500" />started</span>;
+  if (ctxStr(i, "processStartStatus") === "FAILED") return <span className="inline-flex items-center gap-1 text-xs text-error-500"><span className="size-1.5 rounded-full bg-error-500" />failed</span>;
+  return <span className="text-xs text-gray-400">—</span>;
+}
 
 export default function FormInstancesList() {
   const { session } = useAuth();
@@ -91,11 +98,7 @@ export default function FormInstancesList() {
                     </td>
                     <td className="py-2.5 pr-4"><span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATE_BADGE[r.state]}`}>{STATE_LABEL[r.state]}</span></td>
                     <td className="py-2.5 pr-4 text-gray-600 dark:text-gray-300">{fmt(r.submittedAt ?? r.createdAt)}</td>
-                    <td className="py-2.5 pr-4">
-                      {pidOf(r)
-                        ? <span className="inline-flex items-center gap-1 text-xs text-success-600"><span className="size-1.5 rounded-full bg-success-500" />started</span>
-                        : <span className="text-xs text-gray-400">—</span>}
-                    </td>
+                    <td className="py-2.5 pr-4">{processBadge(r)}</td>
                     <td className="py-2.5 text-right">
                       <button type="button" onClick={() => setTraceFor(r)} className="text-sm font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400">Trace</button>
                     </td>
@@ -157,33 +160,50 @@ const DOT_DONE = "bg-success-500";
 const DOT_ACTIVE = "bg-brand-500";
 const DOT_IDLE = "bg-gray-300 dark:bg-gray-600";
 const DOT_WARN = "bg-amber-400";
+const DOT_ERROR = "bg-error-500";
 
 function buildSteps(instance: FormInstance, pid: string | null, trace: ProcessTrace | null, loading: boolean, error: string | null): Step[] {
   const steps: Step[] = [];
   const submitted = instance.state === "SUBMITTED" || instance.state === "PROCESSED";
 
+  // 1. Submission
   steps.push({
     title: submitted ? "Submitted" : `Status: ${STATE_LABEL[instance.state]}`,
     detail: submitted ? new Date(instance.submittedAt ?? instance.createdAt).toLocaleString() : "Not submitted yet — no process is started until submission.",
     dot: submitted ? DOT_DONE : DOT_IDLE,
   });
 
-  if (!pid) {
+  // 2. Process-start outcome (recorded by capability-engine on the instance).
+  const startStatus = ctxStr(instance, "processStartStatus");
+  const startError = ctxStr(instance, "processStartError");
+
+  if (pid) {
+    steps.push({ title: "Process started", detail: `Instance ${pid}`, dot: DOT_DONE });
+  } else if (startStatus === "FAILED") {
+    steps.push({ title: "Process start failed", detail: startError ?? "The start call to the engine failed.", dot: DOT_ERROR });
+    return steps; // nothing to trace — it never started
+  } else {
     steps.push({
       title: "No process started",
       detail: submitted
-        ? "The submission was saved, but a process wasn’t started (it’s best-effort — it may have been skipped or failed). It can be retried."
+        ? "Best-effort — the start may have been skipped (engine not configured for process start). Retryable."
         : "A process starts only once the form is submitted.",
       dot: submitted ? DOT_WARN : DOT_IDLE,
     });
     return steps;
   }
 
-  steps.push({ title: "Process started", detail: `Instance ${pid}`, dot: DOT_DONE });
-
+  // 3. Live process trace
   if (loading) { steps.push({ title: "Checking the process…", dot: DOT_ACTIVE }); return steps; }
   if (error) { steps.push({ title: "Couldn’t read the process", detail: error, dot: DOT_WARN }); return steps; }
   if (!trace || !trace.found) { steps.push({ title: "Process not found", detail: "It may have completed and been cleaned up.", dot: DOT_IDLE }); return steps; }
+
+  // Incidents — the process hit an error inside the engine.
+  if (trace.hasIncident && trace.incidents?.length) {
+    for (const inc of trace.incidents) {
+      steps.push({ title: `Incident: ${inc.type ?? "error"}`, detail: inc.message ?? undefined, dot: DOT_ERROR });
+    }
+  }
 
   if (trace.landedInUserTask && trace.activeTasks?.length) {
     for (const t of trace.activeTasks) {

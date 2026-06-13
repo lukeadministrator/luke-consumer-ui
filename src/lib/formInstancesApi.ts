@@ -181,6 +181,7 @@ export type ProcessTaskInfo = {
   created?: number;
   candidateGroups: string[];
 };
+export type ProcessIncident = { type?: string; message?: string; activityId?: string; timestamp?: number };
 export type ProcessTrace = {
   found: boolean;
   processInstanceId?: string;
@@ -191,6 +192,8 @@ export type ProcessTrace = {
   endTime?: number;
   activeTasks?: ProcessTaskInfo[];
   landedInUserTask?: boolean;
+  incidents?: ProcessIncident[];
+  hasIncident?: boolean;
 };
 
 /** Trace a submission's process: started? running/done? sitting in a user task? */
