@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -138,9 +139,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [user],
   );
 
-  const refreshSession = useCallback(async () => {
-    setSession(await api.getSession(session?.tenant ?? undefined));
+  // Keep the latest session in a ref so refreshSession can read the current
+  // tenant WITHOUT depending on `session`. Depending on `session` gave it a new
+  // identity on every session change, so any effect keyed on [refreshSession]
+  // (e.g. the Forms editor's "re-read session on entry") looped infinitely,
+  // hammering the session endpoint.
+  const sessionRef = useRef<SessionView | null>(session);
+  useEffect(() => {
+    sessionRef.current = session;
   }, [session]);
+
+  const refreshSession = useCallback(async () => {
+    setSession(await api.getSession(sessionRef.current?.tenant ?? undefined));
+  }, []);
 
   const value: AuthValue = {
     isLoaded,
