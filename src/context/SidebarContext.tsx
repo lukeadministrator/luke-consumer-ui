@@ -36,7 +36,9 @@ export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({
 
   useEffect(() => {
     const handleResize = () => {
-      const mobile = window.innerWidth < 768;
+      // Match the lg breakpoint used by the sidebar's visibility classes and the
+      // header toggle (>= 1024). Below this the sidebar is a drawer, above it a rail.
+      const mobile = window.innerWidth < 1024;
       setIsMobile(mobile);
       if (!mobile) {
         setIsMobileOpen(false);
