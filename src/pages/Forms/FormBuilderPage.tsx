@@ -871,7 +871,7 @@ function Designer({ tenant, formId, form, reload, onSchema, building, suppressFl
               <pre className="overflow-x-auto rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700 dark:border-gray-700 dark:bg-white/5 dark:text-gray-300">{embedSnippet}</pre>
               <div className="mt-3 flex items-center gap-2">
                 <Button size="sm" onClick={copyEmbed}>{copied ? "Copied ✓" : "Copy snippet"}</Button>
-                <a href={embedUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400">Open preview ↗</a>
+                <Button size="sm" variant="outline" startIcon={<MonitorPlay className="size-4" />} onClick={() => window.open(embedUrl, "_blank", "noopener,noreferrer")}>Open preview</Button>
               </div>
               <p className="mt-3 text-xs text-gray-400">The link is opaque and signed — it carries only this form, scoped to your organization.</p>
             </>
