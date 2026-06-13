@@ -139,12 +139,14 @@ Run: `npm test`. 35 cases across two files. Listed here for traceability.
 ✅ The key stays `applicantName` — it no longer follows the label (manual
 override). A brand-new field whose key still matches its label keeps syncing.
 
-**E2E-A-06 — AI-applied schema is normalized** · P1
-1. Use LukeTalks to generate/modify a form that would produce duplicate or
-   non-identifier keys.
+**E2E-A-06 — AI-applied schema is camelCased + normalized** · P1
+1. Use LukeTalks to generate a form with fields like "First Name", "Last Name"
+   (the agent emits snake_case keys `first_name`, `last_name`).
 
-✅ After apply, no duplicate-key problems exist; reopening fields shows unique,
-identifier-safe keys; draft persists (reload form → keys unchanged).
+✅ After apply, keys are **camelCase** (`firstName`, `lastName`), unique, and
+identifier-safe; any conditional/expression references are rewritten to match;
+draft persists (reload → keys unchanged). Existing snake_case AI forms get fixed
+on the next AI edit (whole schema re-camelCased).
 
 **E2E-A-07 — Grid submission keyed by field key, not entity id** · P0
 1. Build a Data Grid with two cell fields (keys `qty`, `price`).

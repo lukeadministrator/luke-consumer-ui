@@ -68,6 +68,24 @@ export function sanitizeKey(raw: unknown): string {
   return k || "field";
 }
 
+/**
+ * Force a camelCase identifier from a label (or existing key). Unlike
+ * `sanitizeKey`, it does NOT preserve already-valid keys verbatim, so snake_case
+ * and Title Case collapse to camelCase: `first_name` / `First Name` → `firstName`.
+ * Idempotent on already-camelCase input.
+ */
+export function toCamelKey(raw: unknown): string {
+  const text = typeof raw === "string" ? raw : "";
+  const words = text.replace(/[^A-Za-z0-9]+/g, " ").trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return "field";
+  let k = words
+    .map((w, i) => (i === 0 ? w.charAt(0).toLowerCase() + w.slice(1) : w.charAt(0).toUpperCase() + w.slice(1)))
+    .join("");
+  if (/^[0-9]/.test(k)) k = `f${k}`;
+  if (RESERVED_KEYS.has(k)) k = `${k}Field`;
+  return k || "field";
+}
+
 /** Return `base`, or `base1`, `base2`… until it isn't already in `taken`. */
 export function uniqueKey(base: string, taken: ReadonlySet<string>): string {
   if (!taken.has(base)) return base;
@@ -158,6 +176,57 @@ export function normalizeKeys(schema: FormSchema): FormSchema {
     const key = uniqueKey(base, taken);
     taken.add(key);
     e.attributes.key = key;
+  }
+  return out;
+}
+
+/**
+ * Re-key every field to camelCase (derived from its label, else its current
+ * key), keeping keys unique, and rewrite all key references — conditional
+ * (`conditional.when`), logic rules (`logic[].when/value`) and the expression
+ * attributes — so nothing breaks. Built for AI-applied schemas, whose agent may
+ * emit snake_case keys. Pure; does not mutate the input.
+ */
+export function camelCaseKeys(schema: FormSchema): FormSchema {
+  const entities: Record<string, SchemaEntity> = {};
+  for (const [id, e] of Object.entries(schema.entities)) entities[id] = { ...e, attributes: { ...e.attributes } };
+  const out: FormSchema = { entities, root: [...schema.root] };
+
+  const taken = new Set<string>();
+  const remap = new Map<string, string>(); // oldKey → newKey
+  for (const id of orderedIds(out)) {
+    const e = out.entities[id];
+    if (!isKeyed(e)) continue;
+    const oldKey = typeof e.attributes.key === "string" ? e.attributes.key : "";
+    const base = toCamelKey(typeof e.attributes.label === "string" && e.attributes.label ? e.attributes.label : oldKey || e.type);
+    const newKey = uniqueKey(base, taken);
+    taken.add(newKey);
+    e.attributes.key = newKey;
+    if (oldKey && oldKey !== newKey) remap.set(oldKey, newKey);
+  }
+  if (remap.size === 0) return out;
+
+  // Single-pass token replace, longest key first so no partial/cascading hits.
+  const olds = [...remap.keys()].sort((a, b) => b.length - a.length);
+  const re = new RegExp(`\\b(${olds.join("|")})\\b`, "g");
+  const rewrite = (s: unknown): string | unknown =>
+    typeof s === "string" ? s.replace(re, (m) => remap.get(m) ?? m) : s;
+
+  const EXPR = ["calculateValue", "customConditional", "customValidation", "customDefaultValue"];
+  for (const id of Object.keys(entities)) {
+    const a = entities[id].attributes;
+    for (const attr of EXPR) if (typeof a[attr] === "string") a[attr] = rewrite(a[attr]);
+    const cond = a.conditional as { when?: string } | undefined;
+    if (cond && typeof cond.when === "string" && remap.has(cond.when)) {
+      a.conditional = { ...cond, when: remap.get(cond.when)! };
+    }
+    if (Array.isArray(a.logic)) {
+      a.logic = (a.logic as Array<{ when?: string; value?: string }>).map((r) => ({
+        ...r,
+        ...(typeof r.when === "string" ? { when: rewrite(r.when) } : {}),
+        ...(typeof r.value === "string" ? { value: rewrite(r.value) } : {}),
+      }));
+    }
   }
   return out;
 }

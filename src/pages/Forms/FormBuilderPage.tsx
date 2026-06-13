@@ -54,13 +54,13 @@ import CapabilityBuildingAnimation from "./CapabilityBuildingAnimation";
 import type { BuilderSchemaLike } from "../../lib/formAgentApi";
 import { z } from "zod";
 import {
+  camelCaseKeys,
   collectKeys,
   duplicateKeyIds,
   isAutoKey,
   isKeyed,
   isValidKey,
   keyOf,
-  normalizeKeys,
   orderedIds,
   repairSchema,
   sanitizeKey,
@@ -968,10 +968,10 @@ export default function FormBuilderPage() {
   // Only called when the form actually changed (the panel skips no-op turns), so
   // this is exactly where the build animation belongs — a brief reveal flourish.
   const applyAiSchema = (schema: BuilderSchemaLike) => {
-    // The agent generates keys without our uniqueness/identifier guards, so
-    // normalize before trusting the schema — then persist the cleaned draft so
-    // the backend matches exactly what the builder now shows.
-    const normalized = normalizeKeys(schema as unknown as FormSchema) as unknown as BuilderSchemaLike;
+    // The agent emits snake_case keys without our uniqueness/identifier guards,
+    // so force keys to camelCase (rewriting any references) before trusting the
+    // schema — then persist the cleaned draft so the backend matches the builder.
+    const normalized = camelCaseKeys(schema as unknown as FormSchema) as unknown as BuilderSchemaLike;
     const json = JSON.stringify(normalized);
     suppressFlushRef.current = true; // the outgoing builder must not re-save stale state
     setAiBuilding(true);

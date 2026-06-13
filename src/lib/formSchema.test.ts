@@ -3,6 +3,8 @@ import {
   isValidKey,
   isAutoKey,
   sanitizeKey,
+  toCamelKey,
+  camelCaseKeys,
   uniqueKey,
   keyOf,
   duplicateKeyIds,
@@ -56,6 +58,72 @@ describe("sanitizeKey", () => {
   });
   it("escapes reserved words", () => {
     expect(sanitizeKey("true")).toBe("trueField");
+  });
+});
+
+describe("toCamelKey", () => {
+  it("collapses snake_case to camelCase", () => {
+    expect(toCamelKey("first_name")).toBe("firstName");
+    expect(toCamelKey("phone_number")).toBe("phoneNumber");
+  });
+  it("collapses Title Case to camelCase", () => {
+    expect(toCamelKey("First Name")).toBe("firstName");
+  });
+  it("is idempotent on already-camelCase", () => {
+    expect(toCamelKey("firstName")).toBe("firstName");
+    expect(toCamelKey(toCamelKey("first_name"))).toBe("firstName");
+  });
+  it("stays a valid identifier for digits/empty", () => {
+    expect(isValidKey(toCamelKey("123 go"))).toBe(true);
+    expect(toCamelKey("")).toBe("field");
+  });
+});
+
+describe("camelCaseKeys", () => {
+  it("camelCases snake_case keys", () => {
+    const schema: FormSchema = {
+      entities: { a: field("first_name", { label: "First Name" }), b: field("last_name", { label: "Last Name" }) },
+      root: ["a", "b"],
+    };
+    const out = camelCaseKeys(schema);
+    expect(out.entities.a.attributes.key).toBe("firstName");
+    expect(out.entities.b.attributes.key).toBe("lastName");
+  });
+  it("keeps keys unique when labels collide", () => {
+    const schema: FormSchema = {
+      entities: { a: field("first_name", { label: "First Name" }), b: field("firstname", { label: "First Name" }) },
+      root: ["a", "b"],
+    };
+    const out = camelCaseKeys(schema);
+    expect(out.entities.a.attributes.key).toBe("firstName");
+    expect(out.entities.b.attributes.key).toBe("firstName1");
+    expect(duplicateKeyIds(out).size).toBe(0);
+  });
+  it("rewrites references in expressions, conditional.when and logic", () => {
+    const schema: FormSchema = {
+      entities: {
+        a: field("first_name", { label: "First Name" }),
+        b: field("total_due", {
+          label: "Total Due",
+          calculateValue: "first_name + 1",
+          conditional: { show: true, when: "first_name", eq: "x" },
+          logic: [{ when: "first_name == 'a'", action: "show", value: "first_name" }],
+        }),
+      },
+      root: ["a", "b"],
+    };
+    const out = camelCaseKeys(schema);
+    const b = out.entities.b.attributes;
+    expect(b.calculateValue).toBe("firstName + 1");
+    expect((b.conditional as { when: string }).when).toBe("firstName");
+    expect((b.logic as Array<{ when: string; value: string }>)[0].when).toBe("firstName == 'a'");
+    expect((b.logic as Array<{ when: string; value: string }>)[0].value).toBe("firstName");
+  });
+  it("does not mutate the input and is idempotent", () => {
+    const schema: FormSchema = { entities: { a: field("first_name", { label: "First Name" }) }, root: ["a"] };
+    const out = camelCaseKeys(schema);
+    expect(schema.entities.a.attributes.key).toBe("first_name");
+    expect(camelCaseKeys(out)).toEqual(out);
   });
 });
 
