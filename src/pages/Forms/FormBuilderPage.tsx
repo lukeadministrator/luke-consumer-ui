@@ -34,6 +34,7 @@ import {
   checkout,
   discardDraft,
   getAudit,
+  getEmbedToken,
   getForm,
   latestVersion,
   publishVersion,
@@ -326,6 +327,10 @@ function Designer({ tenant, formId, form, reload, onSchema, building, suppressFl
   const [paletteQuery, setPaletteQuery] = useState("");
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [problemsOpen, setProblemsOpen] = useState(false);
+  const [embedOpen, setEmbedOpen] = useState(false);
+  const [embedToken, setEmbedToken] = useState<string | null>(null);
+  const [embedErr, setEmbedErr] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const saveTimer = useRef<number | null>(null);
   // True while there are edits not yet persisted to the backend (the 600ms
   // autosave debounce window). Drives the leave-guard and the unmount flush.
@@ -507,6 +512,27 @@ function Designer({ tenant, formId, form, reload, onSchema, building, suppressFl
     await publishVersion(tenant, formId, version);
     setPublishedVersion(version);
     setStatus("published");
+  };
+
+  const openEmbed = async () => {
+    setEmbedOpen(true);
+    setEmbedErr(null);
+    setCopied(false);
+    if (embedToken) return;
+    try {
+      const { token } = await getEmbedToken(tenant, formId);
+      setEmbedToken(token);
+    } catch (e) {
+      setEmbedErr((e as { message?: string })?.message ?? "Couldn’t generate the embed code.");
+    }
+  };
+
+  const embedUrl = embedToken ? `${window.location.origin}/embed/${embedToken}` : "";
+  const embedSnippet = embedToken
+    ? `<iframe src="${embedUrl}" width="100%" height="640" style="border:0;max-width:720px" title="${form.name}"></iframe>`
+    : "";
+  const copyEmbed = async () => {
+    try { await navigator.clipboard.writeText(embedSnippet); setCopied(true); } catch { /* ignore */ }
   };
 
   const handleDiscard = async () => {
@@ -730,6 +756,9 @@ function Designer({ tenant, formId, form, reload, onSchema, building, suppressFl
               {version > 0 && (
                 <Tooltip content={blocking.length ? "Fix the blocking problems before publishing." : "Make the latest checked-in version the live one that workflows use."}><Button size="sm" onClick={handlePublish} disabled={publishedVersion === version || blocking.length > 0}>{publishedVersion === version ? "Published" : `Publish v${version}`}</Button></Tooltip>
               )}
+              {publishedVersion && (
+                <Tooltip content="Get an iframe snippet to embed this form on any website."><Button size="sm" variant="outline" onClick={openEmbed}>Embed</Button></Tooltip>
+              )}
             </>
           )}
         </div>
@@ -826,6 +855,29 @@ function Designer({ tenant, formId, form, reload, onSchema, building, suppressFl
           ) : null}
         </DragOverlay>
       </DndContext>
+
+      <Modal isOpen={embedOpen} onClose={() => setEmbedOpen(false)} className="mx-4 w-full max-w-[560px]">
+        <div className="p-6">
+          <h2 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">Embed this form</h2>
+          <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+            Paste this snippet into any web page. Submissions create a response and start a process.
+          </p>
+          {embedErr ? (
+            <p className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-500 dark:bg-error-500/10">{embedErr}</p>
+          ) : !embedToken ? (
+            <p className="py-6 text-center text-sm text-gray-400">Generating…</p>
+          ) : (
+            <>
+              <pre className="overflow-x-auto rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700 dark:border-gray-700 dark:bg-white/5 dark:text-gray-300">{embedSnippet}</pre>
+              <div className="mt-3 flex items-center gap-2">
+                <Button size="sm" onClick={copyEmbed}>{copied ? "Copied ✓" : "Copy snippet"}</Button>
+                <a href={embedUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400">Open preview ↗</a>
+              </div>
+              <p className="mt-3 text-xs text-gray-400">The link is opaque and signed — it carries only this form, scoped to your organization.</p>
+            </>
+          )}
+        </div>
+      </Modal>
 
       <Modal isOpen={problemsOpen} onClose={() => setProblemsOpen(false)} className="mx-4 max-h-[80vh] w-full max-w-[520px] overflow-y-auto">
         <div className="p-6">

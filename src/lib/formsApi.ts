@@ -193,5 +193,10 @@ export async function getAudit(tenant: string, id: string): Promise<AuditEvent[]
   return list.map(toAudit);
 }
 
+/** Mint an opaque, signed embed token for a published form (for the iframe). */
+export async function getEmbedToken(tenant: string, id: string): Promise<{ token: string; code: string }> {
+  return req(tenant, `${BASE}/${seg(id)}/embed-token`);
+}
+
 /** Highest checked-in version for a loaded form (0 when never checked in). */
 export const latestVersion = (form: StoredForm): number => form.latestVersion;
