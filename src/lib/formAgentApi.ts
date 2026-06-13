@@ -21,6 +21,8 @@ export type AgentResult = {
   reply?: string;
   /** Short, clickable next-step ideas tailored to the form. */
   suggestions?: string[];
+  /** False when the form was left untouched (e.g. the user asked a question). */
+  changed?: boolean;
   brain: string;
 };
 

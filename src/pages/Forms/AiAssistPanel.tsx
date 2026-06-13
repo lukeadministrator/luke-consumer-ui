@@ -57,12 +57,16 @@ export default function AiAssistPanel({
     onBusyChange?.(true);
     try {
       const result = await generateSchema(msg, schema ?? EMPTY, formName);
-      await saveDraft(tenant, formId, JSON.stringify(result.schema));
       setBrain(result.brain);
       const n = result.schema.root?.length ?? 0;
       const text = result.reply?.trim() || `Done — the form now has ${n} field${n === 1 ? "" : "s"}.`;
       setMessages((m) => [...m, { role: "ai", text, suggestions: result.suggestions }]);
-      onApplied(result.schema, result.title); // parent applies locally + remounts builder
+      // Only persist + remount the builder when the form actually changed; a
+      // question / chit-chat leaves it untouched, so skip the canvas flash.
+      if (result.changed !== false) {
+        await saveDraft(tenant, formId, JSON.stringify(result.schema));
+        onApplied(result.schema, result.title);
+      }
     } catch (e) {
       setMessages((m) => [...m, { role: "ai", error: true, text: (e as Error).message }]);
     } finally {
