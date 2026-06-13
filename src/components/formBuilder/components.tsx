@@ -7,6 +7,7 @@ import {
 import * as A from "./attributes";
 import * as E from "./entities";
 import FieldTooltip from "./FieldTooltip";
+import RichTextEditor from "./RichTextEditor";
 
 /* ------------------------------------------------------------------ */
 /* Styling + small inputs                                              */
@@ -161,13 +162,8 @@ export const ContentLinkTextAttribute = createAttributeComponent(A.contentLinkTe
   <TextInput label="Help link text (e.g. Terms and Conditions)" value={p.attribute.value ?? ""} onChange={p.setValue} error={p.attribute.error} />
 ));
 export const ContentHtmlAttribute = createAttributeComponent(A.contentHtmlAttribute, (p) => (
-  <Row label="Help content (HTML — opens in a modal when the link is clicked)" error={p.attribute.error}>
-    <textarea
-      className={`${editorInputClass} min-h-[120px] font-mono`}
-      value={p.attribute.value ?? ""}
-      onChange={(e) => p.setValue(e.target.value)}
-      placeholder="<h3>Terms</h3><p>Your terms and conditions…</p>"
-    />
+  <Row label="Help content (opens in a modal when the link is clicked)" error={p.attribute.error}>
+    <RichTextEditor value={p.attribute.value ?? ""} onChange={(html) => p.setValue(html)} minHeightClass="min-h-[8rem]" />
   </Row>
 ));
 type Opt = { label: string; value: string };

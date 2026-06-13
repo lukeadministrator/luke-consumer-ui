@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useEditor, EditorContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
+import RichTextEditor from "./RichTextEditor";
 import {
   evaluateCondition,
   evaluateExpression,
@@ -91,33 +90,10 @@ function AutoTextarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) 
   return <textarea ref={ref} {...props} style={{ overflow: "hidden", resize: "none", ...props.style }} />;
 }
 
-// Full WYSIWYG rich-text editor (TipTap). Value stored as HTML.
-function RichText({ value, onChange, disabled }: { value: unknown; onChange: (v: unknown) => void; disabled: boolean }) {
-  const editor = useEditor({
-    extensions: [StarterKit],
-    content: typeof value === "string" ? value : "",
-    editable: !disabled,
-    onUpdate: ({ editor }) => onChange(editor.getHTML()),
-    editorProps: { attributes: { class: "prose prose-sm max-w-none min-h-[7rem] px-3 py-2 focus:outline-none dark:text-white/90 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_h1]:text-xl [&_h1]:font-bold [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:font-semibold" } },
-  });
-  if (!editor) return null;
-  const btn = (active: boolean) => `rounded px-2 py-1 text-sm transition ${active ? "bg-brand-50 text-brand-600 dark:bg-brand-500/15" : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/10"}`;
-  return (
-    <div className="rounded-lg border border-gray-300 dark:border-gray-700">
-      <div className="flex flex-wrap gap-0.5 border-b border-gray-200 p-1 dark:border-gray-700">
-        <button type="button" onClick={() => editor.chain().focus().toggleBold().run()} className={`${btn(editor.isActive("bold"))} font-bold`}>B</button>
-        <button type="button" onClick={() => editor.chain().focus().toggleItalic().run()} className={`${btn(editor.isActive("italic"))} italic`}>I</button>
-        <button type="button" onClick={() => editor.chain().focus().toggleUnderline().run()} className={`${btn(editor.isActive("underline"))} underline`}>U</button>
-        <button type="button" onClick={() => editor.chain().focus().toggleStrike().run()} className={`${btn(editor.isActive("strike"))} line-through`}>S</button>
-        <span className="mx-0.5 w-px self-stretch bg-gray-200 dark:bg-gray-700" />
-        <button type="button" onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} className={btn(editor.isActive("heading", { level: 2 }))}>H</button>
-        <button type="button" onClick={() => editor.chain().focus().toggleBulletList().run()} className={btn(editor.isActive("bulletList"))}>• List</button>
-        <button type="button" onClick={() => editor.chain().focus().toggleOrderedList().run()} className={btn(editor.isActive("orderedList"))}>1. List</button>
-      </div>
-      <EditorContent editor={editor} />
-    </div>
-  );
-}
+// Full WYSIWYG rich-text editor (shared with the builder). Value stored as HTML.
+const RichText = ({ value, onChange, disabled }: { value: unknown; onChange: (v: unknown) => void; disabled: boolean }) => (
+  <RichTextEditor value={value} onChange={onChange} disabled={disabled} />
+);
 
 type NumberOpts = { delimiter?: boolean; decimalLimit?: number; requireDecimal?: boolean; currency?: string };
 function formatNumber(raw: string, opts: NumberOpts): string {
@@ -453,21 +429,28 @@ export default function FormRenderer({ schema }: { schema: string }) {
   // Rich help content shown in a modal (e.g. Terms & Conditions on a checkbox).
   const [htmlModal, setHtmlModal] = useState<{ title: string; html: string } | null>(null);
 
-  // A clickable "Terms and Conditions"-style link that opens the field's HTML
-  // help content in a modal. Stops propagation so it doesn't toggle a checkbox.
-  const contentLink = (e: SchemaEntity): React.ReactNode => {
-    const text = asStr(e.attributes.contentLinkText);
+  // The field label with its help link embedded. When `contentLinkText` is a
+  // substring of the label, THAT part becomes the clickable link (e.g. label
+  // "I agree to the Terms and Conditions", link text "Terms and Conditions");
+  // otherwise the link is appended. Plain label when there's no help content.
+  // The link stops propagation so it doesn't toggle a checkbox.
+  const labelContent = (e: SchemaEntity): React.ReactNode => {
+    const label = asStr(e.attributes.label);
+    const linkText = asStr(e.attributes.contentLinkText);
     const html = asStr(e.attributes.contentHtml);
-    if (!text || !html) return null;
-    return (
+    if (!linkText || !html) return label;
+    const link = (
       <button
         type="button"
-        onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); setHtmlModal({ title: text, html }); }}
-        className="ml-1 font-medium text-brand-600 underline hover:text-brand-700 dark:text-brand-400"
+        onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); setHtmlModal({ title: linkText, html }); }}
+        className="font-medium text-brand-600 underline hover:text-brand-700 dark:text-brand-400"
       >
-        {text}
+        {linkText}
       </button>
     );
+    const idx = label.indexOf(linkText);
+    if (idx === -1) return (<>{label} {link}</>);
+    return (<>{label.slice(0, idx)}{link}{label.slice(idx + linkText.length)}</>);
   };
 
   // Expression scope: every non-grid field by key (recursing through layout
@@ -783,7 +766,7 @@ export default function FormRenderer({ schema }: { schema: string }) {
         <div key={id}>
           <label htmlFor={controlId} id={labelId} className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
             {renderControl(e, values[id], (v) => set(id, v), disabled, a11y)}
-            {hideLabel ? null : (<span>{asStr(a.label)}{required ? <span className="text-error-500"> *</span> : null}{contentLink(e)}<FieldTooltip text={asStr(a.tooltip)} /></span>)}
+            {hideLabel ? null : (<span>{labelContent(e)}{required ? <span className="text-error-500"> *</span> : null}<FieldTooltip text={asStr(a.tooltip)} /></span>)}
           </label>
           {errors[id] ? <p id={errId} role="alert" className="mt-1 text-xs text-error-500">{errors[id]}</p> : null}
         </div>
@@ -805,7 +788,7 @@ export default function FormRenderer({ schema }: { schema: string }) {
       <div key={id}>
         {hideLabel ? null : (
           <label htmlFor={labelable ? controlId : undefined} id={labelId} className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-            {asStr(a.label)}{required ? <span className="text-error-500"> *</span> : null}{contentLink(e)}<FieldTooltip text={asStr(a.tooltip)} />
+            {labelContent(e)}{required ? <span className="text-error-500"> *</span> : null}<FieldTooltip text={asStr(a.tooltip)} />
           </label>
         )}
         {renderControl(e, values[id], (v) => set(id, v), disabled, a11y)}

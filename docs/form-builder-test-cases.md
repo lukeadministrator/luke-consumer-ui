@@ -335,14 +335,28 @@ by native `type=email`/`url`/`date` validation.
 
 ### Tier F — Field help content (HTML modal)
 
-**E2E-F-01 — Selection field HTML content opens a modal** · P0
-1. On a **Checkbox** (also Radio / Select Boxes / Select), set **Help link text**
-   = `Terms and Conditions` and **Help content (HTML)** =
-   `<h3>Terms</h3><p>...</p><ul><li>a</li></ul>`.
-2. Preview → click the `Terms and Conditions` link next to the field.
+**E2E-F-01 — Help link is a substring of the label** · P0
+1. On a **Checkbox** (also Radio / Select Boxes / Select), set **Label** =
+   `I agree to the Terms and Conditions`, **Help link text** =
+   `Terms and Conditions` (a substring of the label), and author **Help content**
+   in the WYSIWYG (a heading, a paragraph, a list).
+2. Preview → only the `Terms and Conditions` words are an underlined link (no
+   duplicated/appended text); click it.
 
-✅ A modal opens showing the HTML **rendered** (heading, paragraph, list), with
-the link text as the title; Esc / backdrop closes it.
+✅ A modal opens showing the content **rendered**, titled with the link text;
+Esc / backdrop closes it. The rest of the label is plain text.
+
+**E2E-F-05 — WYSIWYG authoring** · P1
+1. In the Help-content editor, use the toolbar (bold, heading, bullet list).
+2. Preview → open the modal.
+
+✅ The modal shows the formatting as authored (no raw HTML tags visible).
+
+**E2E-F-06 — Link text not in label → appended (fallback)** · P2
+1. Set Label = `Consent` and Help link text = `Privacy Policy` (not a substring).
+
+✅ The link is appended after the label (`Consent Privacy Policy`) and still
+opens the modal.
 
 **E2E-F-02 — Link click does not toggle the checkbox** · P0
 1. From E2E-F-01, click the `Terms and Conditions` link on a checkbox.
