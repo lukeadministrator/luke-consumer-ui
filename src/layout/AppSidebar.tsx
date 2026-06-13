@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router";
 
 import { ChevronDownIcon, GridIcon, HorizontaLDots, ListIcon, LockIcon, MailIcon, PhoneIcon } from "../icons";
+import { FileText, ClipboardList, Inbox } from "lucide-react";
 import { useSidebar } from "../context/SidebarContext";
 import { useAuth } from "../context/AuthContext";
 import { canRead, FORMS } from "../lib/capabilities";
@@ -10,7 +11,7 @@ type NavItem = {
   name: string;
   icon: React.ReactNode;
   path?: string;
-  subItems?: { name: string; path: string; pro?: boolean; new?: boolean }[];
+  subItems?: { name: string; path: string; icon?: React.ReactNode; pro?: boolean; new?: boolean }[];
 };
 
 const DASHBOARD_ITEM: NavItem = { icon: <GridIcon />, name: "Dashboard", path: "/dashboard" };
@@ -18,8 +19,9 @@ const FORMS_ITEM: NavItem = {
   icon: <ListIcon />,
   name: "Forms",
   subItems: [
-    { name: "Form Definitions", path: "/forms" },
-    { name: "Form Instances", path: "/forms/instances" },
+    { name: "Form Definitions", path: "/forms", icon: <FileText className="size-4" /> },
+    { name: "Form Instances", path: "/forms/instances", icon: <ClipboardList className="size-4" /> },
+    { name: "Form Inbox", path: "/forms/inbox", icon: <Inbox className="size-4" /> },
   ],
 };
 const navItems: NavItem[] = [
@@ -188,7 +190,7 @@ const AppSidebar: React.FC = () => {
                           : "menu-dropdown-item-inactive"
                       }`}
                     >
-                      {subItem.name}
+                      <span className="flex items-center gap-2">{subItem.icon}{subItem.name}</span>
                       <span className="flex items-center gap-1 ml-auto">
                         {subItem.new && (
                           <span
