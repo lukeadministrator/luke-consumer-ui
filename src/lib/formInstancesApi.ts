@@ -173,6 +173,31 @@ export async function markProcessed(tenant: string, id: string): Promise<FormIns
   return toInstance(await req<ApiInstance>(tenant, `${BASE}/${seg(id)}/processed`, { method: "POST" }));
 }
 
+// ── End-to-end process trace (core-engine /api/process-trace) ────────────────
+export type ProcessTaskInfo = {
+  id: string;
+  name?: string;
+  assignee?: string | null;
+  created?: number;
+  candidateGroups: string[];
+};
+export type ProcessTrace = {
+  found: boolean;
+  processInstanceId?: string;
+  processDefinitionKey?: string;
+  state?: string; // ACTIVE | COMPLETED | …
+  ended?: boolean;
+  startTime?: number;
+  endTime?: number;
+  activeTasks?: ProcessTaskInfo[];
+  landedInUserTask?: boolean;
+};
+
+/** Trace a submission's process: started? running/done? sitting in a user task? */
+export function getProcessTrace(tenant: string, processInstanceId: string): Promise<ProcessTrace> {
+  return authed(`/api/process-trace/${seg(processInstanceId)}`, tenantInit(tenant));
+}
+
 /** Human label for a lifecycle state. */
 export const STATE_LABEL: Record<InstanceState, string> = {
   CREATED: "Created",

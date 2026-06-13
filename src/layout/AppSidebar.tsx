@@ -14,7 +14,14 @@ type NavItem = {
 };
 
 const DASHBOARD_ITEM: NavItem = { icon: <GridIcon />, name: "Dashboard", path: "/dashboard" };
-const FORMS_ITEM: NavItem = { icon: <ListIcon />, name: "Forms", path: "/forms" };
+const FORMS_ITEM: NavItem = {
+  icon: <ListIcon />,
+  name: "Forms",
+  subItems: [
+    { name: "Form Definitions", path: "/forms" },
+    { name: "Form Instances", path: "/forms/instances" },
+  ],
+};
 const navItems: NavItem[] = [
   DASHBOARD_ITEM,
   FORMS_ITEM,
@@ -30,7 +37,7 @@ const AppSidebar: React.FC = () => {
   // Forms is hidden unless the user has at least read access to the FORMS capability.
   // Org owners additionally get the Auth & Access admin page.
   const items: NavItem[] = navItems.filter(
-    (item) => item.path !== "/forms" || canRead(session, FORMS),
+    (item) => item.name !== "Forms" || canRead(session, FORMS),
   );
   if (session?.tenantAdmin) {
     items.push({ icon: <LockIcon />, name: "Auth & Access", path: "/access" });

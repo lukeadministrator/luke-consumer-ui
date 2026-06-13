@@ -21,6 +21,7 @@ const FormBuilderPage = lazy(() => import("./pages/Forms/FormBuilderPage"));
 const FormFill = lazy(() => import("./pages/Forms/FormFill"));
 const FormResponses = lazy(() => import("./pages/Forms/FormResponses"));
 const FormEmbed = lazy(() => import("./pages/Forms/FormEmbed"));
+const FormInstancesList = lazy(() => import("./pages/Forms/FormInstancesList"));
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import GuestRoute from "./components/auth/GuestRoute";
 import OnboardingGate from "./components/auth/OnboardingGate";
@@ -56,6 +57,15 @@ export default function App() {
               {/* Forms — gated behind the FORMS capability (read to view, write to edit). */}
               <Route element={<CapabilityRoute code={FORMS} />}>
                 <Route path="/forms" element={<FormsList />} />
+                {/* Form Instances — all submissions + the end-to-end process trace. */}
+                <Route
+                  path="/forms/instances"
+                  element={
+                    <Suspense fallback={<div className="flex h-[60vh] items-center justify-center text-sm text-gray-400">Loading…</div>}>
+                      <FormInstancesList />
+                    </Suspense>
+                  }
+                />
                 {/* Form designer — lives in the normal dashboard shell. */}
                 <Route
                   path="/forms/:id"
