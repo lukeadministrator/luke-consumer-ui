@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createAttribute } from "@coltorapps/builder";
+import { isValidKey } from "../../lib/formSchema";
 
 // Reusable field attributes, grouped the way Form.io groups them across the
 // Display / Data / Validation / API / Conditional property tabs.
@@ -107,7 +108,17 @@ export const validateOnAttribute = createAttribute({
 /* ----- API ----- */
 export const keyAttribute = createAttribute({
   name: "key",
-  validate: (value) => z.string().optional().parse(value),
+  // Empty is allowed (the renderer falls back to the entity id), but a provided
+  // key must be a valid expression identifier so logic/calculations can use it.
+  validate: (value) =>
+    z
+      .string()
+      .optional()
+      .refine(
+        (v) => v === undefined || v === "" || isValidKey(v),
+        "Use letters, numbers and underscores only (must start with a letter).",
+      )
+      .parse(value),
 });
 export const tagsAttribute = createAttribute({
   name: "tags",

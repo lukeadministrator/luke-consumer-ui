@@ -1,0 +1,276 @@
+// Schema integrity utilities for the form builder/renderer.
+//
+// The coltorapps schema is `{ entities, root }`, where each entity is
+// `{ type, attributes, parentId?, children? }`. Field entities carry a `key`
+// attribute — the identifier that names the field in the expression scope and in
+// the submitted payload. Two invariants keep submissions trustworthy:
+//
+//   1. Every key is a valid expression identifier  →  logic/calc can reference it.
+//   2. Every key is unique                          →  values never overwrite each
+//                                                       other in scope or payload.
+//
+// This module is intentionally decoupled from the builder (no @coltorapps import)
+// so it can be unit-tested in isolation and reused by the renderer and the AI
+// apply path. An entity is treated as "keyed" iff its attributes carry a `key`.
+
+export type SchemaEntity = {
+  type: string;
+  attributes: Record<string, unknown>;
+  parentId?: string;
+  children?: string[];
+};
+
+export type FormSchema = {
+  entities: Record<string, SchemaEntity>;
+  root: string[];
+};
+
+export type ProblemSeverity = "error" | "warning";
+
+export type SchemaProblem = {
+  /** Stable machine code, e.g. "duplicate-key". */
+  code: string;
+  severity: ProblemSeverity;
+  /** The offending entity, when the problem is field-scoped. */
+  entityId?: string;
+  message: string;
+};
+
+/** A valid expression identifier: letter/underscore start, then word chars. */
+export const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** A small set of names that would shadow the expression engine / JS globals. */
+const RESERVED_KEYS = new Set(["true", "false", "null", "undefined", "NaN", "Infinity"]);
+
+export function isValidKey(value: unknown): value is string {
+  return typeof value === "string" && KEY_RE.test(value) && !RESERVED_KEYS.has(value);
+}
+
+/** True when this entity participates in the keyed namespace (a data field). */
+export function isKeyed(e: SchemaEntity | undefined): boolean {
+  return !!e && typeof e.attributes === "object" && e.attributes !== null && "key" in e.attributes;
+}
+
+/**
+ * Coerce an arbitrary string into a valid, identifier-safe key. Already-valid
+ * keys are returned untouched (so "emailAddress" is preserved, not flattened).
+ */
+export function sanitizeKey(raw: unknown): string {
+  if (isValidKey(raw)) return raw;
+  const text = typeof raw === "string" ? raw : "";
+  const words = text.replace(/[^A-Za-z0-9]+/g, " ").trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return "field";
+  let k = words
+    .map((w, i) => (i === 0 ? w.toLowerCase() : w[0].toUpperCase() + w.slice(1).toLowerCase()))
+    .join("");
+  if (/^[0-9]/.test(k)) k = `f${k}`; // identifiers can't start with a digit
+  if (RESERVED_KEYS.has(k)) k = `${k}Field`;
+  return k || "field";
+}
+
+/** Return `base`, or `base2`, `base3`… until it isn't already in `taken`. */
+export function uniqueKey(base: string, taken: ReadonlySet<string>): string {
+  if (!taken.has(base)) return base;
+  let n = 2;
+  while (taken.has(`${base}${n}`)) n++;
+  return `${base}${n}`;
+}
+
+/** Effective key for an entity (its `key` attribute, falling back to its id). */
+export function keyOf(id: string, e: SchemaEntity): string {
+  const k = e.attributes?.key;
+  return typeof k === "string" && k ? k : id;
+}
+
+/**
+ * Deterministic traversal order: depth-first from `root`, then any entities not
+ * reachable from root (orphans), in insertion order. Stable ordering matters so
+ * that when keys collide the *earlier* field keeps its name and later ones get
+ * suffixed — repeated normalization is then idempotent.
+ */
+export function orderedIds(schema: FormSchema): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const visit = (id: string) => {
+    if (seen.has(id)) return; // guard against cycles
+    const e = schema.entities[id];
+    if (!e) return;
+    seen.add(id);
+    out.push(id);
+    for (const c of e.children ?? []) visit(c);
+  };
+  for (const id of schema.root) visit(id);
+  for (const id of Object.keys(schema.entities)) if (!seen.has(id)) visit(id);
+  return out;
+}
+
+/** entityId → effective key, for every keyed field, in traversal order. */
+export function collectKeys(schema: FormSchema): Array<{ id: string; key: string }> {
+  const out: Array<{ id: string; key: string }> = [];
+  for (const id of orderedIds(schema)) {
+    const e = schema.entities[id];
+    if (isKeyed(e)) out.push({ id, key: keyOf(id, e) });
+  }
+  return out;
+}
+
+/** Ids of keyed entities whose key duplicates an earlier field's key. */
+export function duplicateKeyIds(schema: FormSchema): Set<string> {
+  const seen = new Set<string>();
+  const dupes = new Set<string>();
+  for (const { id, key } of collectKeys(schema)) {
+    if (seen.has(key)) dupes.add(id);
+    else seen.add(key);
+  }
+  return dupes;
+}
+
+/**
+ * Return a copy of the schema with every keyed field given a valid, unique key.
+ * Valid + still-unique keys are preserved; invalid or colliding ones are
+ * sanitized and suffixed. Pure — does not mutate the input.
+ */
+export function normalizeKeys(schema: FormSchema): FormSchema {
+  const entities: Record<string, SchemaEntity> = {};
+  for (const [id, e] of Object.entries(schema.entities)) entities[id] = { ...e, attributes: { ...e.attributes } };
+  const out: FormSchema = { entities, root: [...schema.root] };
+
+  const taken = new Set<string>();
+  for (const id of orderedIds(out)) {
+    const e = out.entities[id];
+    if (!isKeyed(e)) continue;
+    const cur = e.attributes.key;
+    const base = sanitizeKey(typeof cur === "string" && cur ? cur : (e.attributes.label ?? e.type));
+    const key = uniqueKey(base, taken);
+    taken.add(key);
+    e.attributes.key = key;
+  }
+  return out;
+}
+
+/**
+ * Full integrity check: referential soundness + key validity/uniqueness. Returns
+ * a flat problem list (errors should block check-in/publish; warnings are
+ * advisory). Tolerant of malformed input — never throws.
+ */
+export function validateSchema(schema: FormSchema | null | undefined): SchemaProblem[] {
+  const problems: SchemaProblem[] = [];
+  if (!schema || typeof schema !== "object" || !schema.entities || !Array.isArray(schema.root)) {
+    problems.push({ code: "malformed-schema", severity: "error", message: "Schema is missing entities or root." });
+    return problems;
+  }
+  const { entities, root } = schema;
+
+  // Referential integrity: root + children must point at existing entities.
+  for (const id of root) {
+    if (!entities[id]) {
+      problems.push({ code: "dangling-root", severity: "error", entityId: id, message: `Root references unknown entity "${id}".` });
+    }
+  }
+  for (const [id, e] of Object.entries(entities)) {
+    for (const cid of e.children ?? []) {
+      if (!entities[cid]) {
+        problems.push({ code: "dangling-child", severity: "error", entityId: id, message: `Container "${id}" references unknown child "${cid}".` });
+      } else if (entities[cid].parentId !== undefined && entities[cid].parentId !== id) {
+        problems.push({ code: "parent-mismatch", severity: "warning", entityId: cid, message: `Entity "${cid}" is a child of "${id}" but its parentId is "${entities[cid].parentId}".` });
+      }
+    }
+  }
+
+  // Reachability + cycle detection from root.
+  const reachable = new Set<string>();
+  const onStack = new Set<string>();
+  let cycle = false;
+  const walk = (id: string) => {
+    if (onStack.has(id)) { cycle = true; return; }
+    if (reachable.has(id)) return;
+    const e = entities[id];
+    if (!e) return;
+    reachable.add(id);
+    onStack.add(id);
+    for (const c of e.children ?? []) walk(c);
+    onStack.delete(id);
+  };
+  for (const id of root) walk(id);
+  if (cycle) problems.push({ code: "cycle", severity: "error", message: "The schema contains a container cycle." });
+  for (const id of Object.keys(entities)) {
+    if (!reachable.has(id)) {
+      problems.push({ code: "orphan", severity: "warning", entityId: id, message: `Entity "${id}" is not reachable from the form root.` });
+    }
+  }
+
+  // Key validity.
+  for (const { id, key } of collectKeys(schema)) {
+    if (!isValidKey(key)) {
+      problems.push({ code: "invalid-key", severity: "error", entityId: id, message: `Key "${key}" isn't a valid identifier — logic and calculations can't reference it.` });
+    }
+  }
+  // Key uniqueness.
+  for (const id of duplicateKeyIds(schema)) {
+    problems.push({ code: "duplicate-key", severity: "error", entityId: id, message: `Key "${keyOf(id, entities[id])}" is used by more than one field — their answers would collide.` });
+  }
+
+  return problems;
+}
+
+/** Convenience: does the schema have any blocking (error-severity) problem? */
+export function hasBlockingProblems(schema: FormSchema | null | undefined): boolean {
+  return validateSchema(schema).some((p) => p.severity === "error");
+}
+
+/**
+ * Return a structurally-sound copy of the schema so the builder/renderer can
+ * never choke on a corrupted draft. It:
+ *   - drops `root`/`children` ids that don't exist,
+ *   - breaks container cycles (removes the back-edge),
+ *   - keeps only entities reachable from root, with a correct `parentId`.
+ * Pure. `removed` lists entity ids that were unreachable and dropped.
+ */
+export function repairSchema(schema: FormSchema): { schema: FormSchema; removed: string[] } {
+  const src = schema.entities ?? {};
+  const exists = (id: string) => Object.prototype.hasOwnProperty.call(src, id);
+
+  // Clone entities with filtered children (drop dangling child ids up front).
+  const entities: Record<string, SchemaEntity> = {};
+  for (const [id, e] of Object.entries(src)) {
+    entities[id] = { ...e, attributes: { ...e.attributes } };
+    if (Array.isArray(e.children)) entities[id].children = e.children.filter(exists);
+  }
+
+  const root = (Array.isArray(schema.root) ? schema.root : []).filter(exists);
+
+  // Reachability DFS from root, breaking cycles and reseating parentId.
+  const reachable = new Set<string>();
+  const onStack = new Set<string>();
+  const visit = (id: string, parentId?: string) => {
+    const e = entities[id];
+    if (!e) return;
+    if (onStack.has(id) || reachable.has(id)) {
+      // Already placed (cycle back-edge or a child claimed by two parents):
+      // sever this edge so the tree stays acyclic and single-parent.
+      if (parentId) {
+        const pc = entities[parentId].children;
+        if (pc) entities[parentId].children = pc.filter((c) => c !== id);
+      }
+      return;
+    }
+    reachable.add(id);
+    onStack.add(id);
+    if (parentId) e.parentId = parentId;
+    else delete e.parentId;
+    for (const cid of [...(e.children ?? [])]) visit(cid, id);
+    onStack.delete(id);
+  };
+  for (const id of root) visit(id, undefined);
+
+  // Drop anything not reachable from root (truly disconnected).
+  const removed: string[] = [];
+  for (const id of Object.keys(entities)) {
+    if (!reachable.has(id)) {
+      removed.push(id);
+      delete entities[id];
+    }
+  }
+
+  return { schema: { entities, root }, removed };
+}

@@ -31,3 +31,33 @@ export function evaluateValidation(expr: string | undefined, scope: Scope): bool
   const result = evaluateExpression(expr, scope);
   return result === undefined ? true : Boolean(result);
 }
+
+/**
+ * Static analysis for builder-time authoring feedback: returns an error message
+ * if the expression doesn't parse, or references identifiers not in `knownKeys`
+ * (so a typo'd field name surfaces instead of silently no-op'ing). Empty = ok.
+ */
+export function analyzeExpression(
+  expr: string | undefined,
+  knownKeys: ReadonlySet<string>,
+): string | null {
+  const code = expr?.trim();
+  if (!code) return null;
+  let parsed: ReturnType<Parser["parse"]>;
+  try {
+    parsed = parser.parse(code);
+  } catch (e) {
+    return `Syntax error: ${(e as Error).message}`;
+  }
+  let vars: string[];
+  try {
+    vars = parsed.variables();
+  } catch {
+    vars = [];
+  }
+  const unknown = vars.filter((v) => !knownKeys.has(v));
+  if (unknown.length) {
+    return `Unknown field${unknown.length > 1 ? "s" : ""}: ${unknown.join(", ")}`;
+  }
+  return null;
+}

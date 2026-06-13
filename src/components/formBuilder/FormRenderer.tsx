@@ -7,10 +7,24 @@ import {
   evaluateValidation,
   type Scope,
 } from "../../lib/expression";
+import { repairSchema, type FormSchema } from "../../lib/formSchema";
 
 type Attrs = Record<string, unknown>;
 type SchemaEntity = { type: string; attributes: Attrs };
 type ParsedSchema = { entities: Record<string, SchemaEntity>; root: string[] };
+
+// Accessibility wiring threaded from a field's wrapper down to its control, so
+// label, error and description are programmatically associated with the input.
+type FieldA11y = {
+  id: string;
+  labelId: string;
+  describedBy?: string;
+  invalid: boolean;
+  required: boolean;
+};
+// Control types that are NOT a single labelable element — their label uses
+// aria-labelledby instead of htmlFor, and they render as an ARIA group.
+const NON_LABELABLE = new Set(["radio", "selectBoxes", "day", "signature"]);
 
 const asStr = (v: unknown) => (typeof v === "string" ? v : "");
 const asBool = (v: unknown) => Boolean(v);
@@ -30,7 +44,7 @@ type StoredFile = { name: string; url: string };
 
 // File input. With no backend, files are read into data URLs and held in the
 // form value — swap the read step for a POST to your storage when you have one.
-function FileField({ multiple, value, disabled, onChange }: { multiple: boolean; value: unknown; disabled: boolean; onChange: (v: StoredFile[]) => void }) {
+function FileField({ multiple, value, disabled, onChange, id, invalid, required, describedBy }: { multiple: boolean; value: unknown; disabled: boolean; onChange: (v: StoredFile[]) => void; id?: string; invalid?: boolean; required?: boolean; describedBy?: string }) {
   const files = Array.isArray(value) ? (value as StoredFile[]) : [];
   const handle = (ev: React.ChangeEvent<HTMLInputElement>) => {
     const list = Array.from(ev.target.files ?? []);
@@ -47,7 +61,7 @@ function FileField({ multiple, value, disabled, onChange }: { multiple: boolean;
   };
   return (
     <div>
-      <input type="file" multiple={multiple} disabled={disabled} onChange={handle} className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-brand-600 dark:text-gray-300" />
+      <input type="file" id={id} aria-invalid={invalid || undefined} aria-required={required || undefined} aria-describedby={describedBy} multiple={multiple} disabled={disabled} onChange={handle} className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-brand-600 dark:text-gray-300" />
       {files.length > 0 && (
         <ul className="mt-2 space-y-1 text-xs text-gray-500">
           {files.map((f, i) => <li key={i}>📎 {f.name}</li>)}
@@ -125,7 +139,7 @@ function formatNumber(raw: string, opts: NumberOpts): string {
 
 // Number input with optional thousands separator / decimal formatting. Shows
 // the raw value while focused (no cursor jumps), formatted when blurred.
-function NumberField(props: { value: unknown; onChange: (v: unknown) => void; opts: NumberOpts; className?: string; placeholder?: string; disabled?: boolean; tabIndex?: number; autoFocus?: boolean }) {
+function NumberField(props: { value: unknown; onChange: (v: unknown) => void; opts: NumberOpts; className?: string; placeholder?: string; disabled?: boolean; tabIndex?: number; autoFocus?: boolean; id?: string; invalid?: boolean; required?: boolean; describedBy?: string }) {
   const [focused, setFocused] = useState(false);
   const raw = props.value === undefined || props.value === null ? "" : String(props.value);
   const formatted = props.opts.delimiter || props.opts.decimalLimit != null || props.opts.currency ? formatNumber(raw, props.opts) : raw;
@@ -133,6 +147,10 @@ function NumberField(props: { value: unknown; onChange: (v: unknown) => void; op
     <input
       type="text"
       inputMode="decimal"
+      id={props.id}
+      aria-invalid={props.invalid || undefined}
+      aria-required={props.required || undefined}
+      aria-describedby={props.describedBy}
       className={props.className}
       placeholder={props.placeholder}
       disabled={props.disabled}
@@ -147,7 +165,7 @@ function NumberField(props: { value: unknown; onChange: (v: unknown) => void; op
 }
 
 // Signature pad — draw with mouse/touch, store as a PNG data URL.
-function SignaturePad({ value, onChange, penColor, disabled }: { value: unknown; onChange: (v: unknown) => void; penColor: string; disabled: boolean }) {
+function SignaturePad({ value, onChange, penColor, disabled, id, labelId, invalid, describedBy }: { value: unknown; onChange: (v: unknown) => void; penColor: string; disabled: boolean; id?: string; labelId?: string; invalid?: boolean; describedBy?: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   useEffect(() => {
@@ -198,9 +216,15 @@ function SignaturePad({ value, onChange, penColor, disabled }: { value: unknown;
     <div>
       <canvas
         ref={ref}
+        id={id}
+        role="img"
+        tabIndex={disabled ? -1 : 0}
+        aria-labelledby={labelId}
+        aria-invalid={invalid || undefined}
+        aria-describedby={describedBy}
         width={500}
         height={160}
-        className="max-w-full touch-none rounded-lg border border-gray-300 bg-white dark:border-gray-700"
+        className="max-w-full touch-none rounded-lg border border-gray-300 bg-white focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/20 dark:border-gray-700"
         onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end}
         onTouchStart={start} onTouchMove={move} onTouchEnd={end}
       />
@@ -211,7 +235,7 @@ function SignaturePad({ value, onChange, penColor, disabled }: { value: unknown;
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 type DayOpts = { hideDay?: boolean; hideMonth?: boolean; hideYear?: boolean; dayFirst?: boolean; minYear?: number; maxYear?: number };
-function DayField({ value, onChange, opts, disabled }: { value: unknown; onChange: (v: unknown) => void; opts: DayOpts; disabled: boolean }) {
+function DayField({ value, onChange, opts, disabled, id, labelId, invalid, describedBy }: { value: unknown; onChange: (v: unknown) => void; opts: DayOpts; disabled: boolean; id?: string; labelId?: string; invalid?: boolean; describedBy?: string }) {
   const parts = (typeof value === "string" ? value : "").split("-");
   const yy = parts[0] ?? "", mm = parts[1] ?? "", dd = parts[2] ?? "";
   const now = new Date().getFullYear();
@@ -220,7 +244,7 @@ function DayField({ value, onChange, opts, disabled }: { value: unknown; onChang
   const cls = "h-11 rounded-lg border border-gray-300 bg-transparent px-2 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden dark:border-gray-700 dark:text-white/90";
   const emit = (y: string, m: string, d: string) => onChange(`${y}-${m}-${d}`);
   const months = (
-    <select key="m" disabled={disabled} className={cls} value={mm} onChange={(e) => emit(yy, e.target.value, dd)}>
+    <select key="m" aria-label="Month" disabled={disabled} className={cls} value={mm} onChange={(e) => emit(yy, e.target.value, dd)}>
       <option value="">Month</option>
       {MONTHS.map((mn, i) => <option key={mn} value={String(i + 1).padStart(2, "0")}>{mn}</option>)}
     </select>
@@ -228,13 +252,13 @@ function DayField({ value, onChange, opts, disabled }: { value: unknown; onChang
   // Valid days for the chosen month/year (leap-safe when year is blank).
   const daysInMonth = mm ? new Date(Number(yy) || 2024, Number(mm), 0).getDate() : 31;
   const days = (
-    <select key="d" disabled={disabled} className={cls} value={dd} onChange={(e) => emit(yy, mm, e.target.value)}>
+    <select key="d" aria-label="Day" disabled={disabled} className={cls} value={dd} onChange={(e) => emit(yy, mm, e.target.value)}>
       <option value="">Day</option>
       {Array.from({ length: daysInMonth }, (_, i) => <option key={i} value={String(i + 1).padStart(2, "0")}>{i + 1}</option>)}
     </select>
   );
   const years = (
-    <select key="y" disabled={disabled} className={cls} value={yy} onChange={(e) => emit(e.target.value, mm, dd)}>
+    <select key="y" aria-label="Year" disabled={disabled} className={cls} value={yy} onChange={(e) => emit(e.target.value, mm, dd)}>
       <option value="">Year</option>
       {Array.from({ length: maxY - minY + 1 }, (_, i) => maxY - i).map((y) => <option key={y} value={String(y)}>{y}</option>)}
     </select>
@@ -242,10 +266,14 @@ function DayField({ value, onChange, opts, disabled }: { value: unknown; onChang
   const order = (opts.dayFirst ? [["d", days], ["m", months]] : [["m", months], ["d", days]]) as [string, React.ReactNode][];
   order.push(["y", years]);
   const visible = order.filter(([k]) => (k === "d" && !opts.hideDay) || (k === "m" && !opts.hideMonth) || (k === "y" && !opts.hideYear));
-  return <div className="flex gap-2">{visible.map(([, el]) => el)}</div>;
+  return (
+    <div id={id} role="group" aria-labelledby={labelId} aria-invalid={invalid || undefined} aria-describedby={describedBy} className="flex gap-2">
+      {visible.map(([, el]) => el)}
+    </div>
+  );
 }
 
-function SearchSelect({ options, value, onChange, placeholder, disabled }: { options: Opt[]; value: string; onChange: (v: unknown) => void; placeholder: string; disabled: boolean }) {
+function SearchSelect({ options, value, onChange, placeholder, disabled, id, labelId, invalid, describedBy }: { options: Opt[]; value: string; onChange: (v: unknown) => void; placeholder: string; disabled: boolean; id?: string; labelId?: string; invalid?: boolean; describedBy?: string }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const ref = useRef<HTMLDivElement>(null);
@@ -258,19 +286,31 @@ function SearchSelect({ options, value, onChange, placeholder, disabled }: { opt
   const filtered = options.filter((o) => o.label.toLowerCase().includes(q.toLowerCase()));
   return (
     <div ref={ref} className="relative">
-      <button type="button" disabled={disabled} onClick={() => setOpen((o) => !o)} className={`${inputClass} flex items-center justify-between text-left`}>
+      <button
+        type="button"
+        id={id}
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-labelledby={labelId}
+        aria-invalid={invalid || undefined}
+        aria-describedby={describedBy}
+        className={`${inputClass} flex items-center justify-between text-left`}
+        onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}
+      >
         <span className={selected ? "" : "text-gray-400"}>{selected ? selected.label : placeholder || "Select…"}</span>
-        <span className="text-gray-400">▾</span>
+        <span aria-hidden className="text-gray-400">▾</span>
       </button>
       {open && (
         <div className="absolute z-30 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-theme-lg dark:border-gray-700 dark:bg-gray-900">
-          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="w-full border-b border-gray-100 bg-transparent px-3 py-2 text-sm focus:outline-none dark:border-gray-800 dark:text-white/90" />
-          <ul className="max-h-48 overflow-auto py-1">
+          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" aria-label="Search options" className="w-full border-b border-gray-100 bg-transparent px-3 py-2 text-sm focus:outline-none dark:border-gray-800 dark:text-white/90" />
+          <ul role="listbox" className="max-h-48 overflow-auto py-1">
             {filtered.length === 0 ? (
               <li className="px-3 py-2 text-sm text-gray-400">No matches</li>
             ) : (
               filtered.map((o) => (
-                <li key={o.value}>
+                <li key={o.value} role="option" aria-selected={o.value === value}>
                   <button type="button" onClick={() => { onChange(o.value); setOpen(false); setQ(""); }} className={`block w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 dark:hover:bg-white/10 ${o.value === value ? "text-brand-600" : "text-gray-700 dark:text-gray-300"}`}>{o.label}</button>
                 </li>
               ))
@@ -283,7 +323,7 @@ function SearchSelect({ options, value, onChange, placeholder, disabled }: { opt
 }
 
 // Tag chip input — Enter/comma adds, Backspace removes, ✕ to delete. Value = string[].
-function TagsInput({ value, onChange, placeholder, disabled }: { value: unknown; onChange: (v: unknown) => void; placeholder: string; disabled: boolean }) {
+function TagsInput({ value, onChange, placeholder, disabled, id, labelId, invalid, describedBy }: { value: unknown; onChange: (v: unknown) => void; placeholder: string; disabled: boolean; id?: string; labelId?: string; invalid?: boolean; describedBy?: string }) {
   const tags = Array.isArray(value) ? (value as string[]) : typeof value === "string" && value ? value.split(",").map((s) => s.trim()).filter(Boolean) : [];
   const [draft, setDraft] = useState("");
   const add = () => { const t = draft.trim(); if (t && !tags.includes(t)) onChange([...tags, t]); setDraft(""); };
@@ -292,10 +332,14 @@ function TagsInput({ value, onChange, placeholder, disabled }: { value: unknown;
       {tags.map((t, i) => (
         <span key={i} className="inline-flex items-center gap-1 rounded bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-600 dark:bg-brand-500/10">
           {t}
-          <button type="button" onClick={() => onChange(tags.filter((_, j) => j !== i))} className="text-brand-400 hover:text-error-500">✕</button>
+          <button type="button" onClick={() => onChange(tags.filter((_, j) => j !== i))} className="text-brand-400 hover:text-error-500" aria-label={`Remove ${t}`}>✕</button>
         </span>
       ))}
       <input
+        id={id}
+        aria-labelledby={labelId}
+        aria-invalid={invalid || undefined}
+        aria-describedby={describedBy}
         value={draft}
         disabled={disabled}
         placeholder={tags.length ? "" : placeholder || "Add tags…"}
@@ -314,7 +358,11 @@ function TagsInput({ value, onChange, placeholder, disabled }: { value: unknown;
 function parse(raw: string): ParsedSchema {
   try {
     const s = JSON.parse(raw);
-    if (s && typeof s === "object" && s.entities && Array.isArray(s.root)) return s as ParsedSchema;
+    if (s && typeof s === "object" && s.entities && Array.isArray(s.root)) {
+      // Repair dangling refs / cycles so a corrupted draft renders best-effort
+      // instead of throwing or looping.
+      return repairSchema(s as FormSchema).schema as unknown as ParsedSchema;
+    }
   } catch {
     /* ignore */
   }
@@ -325,6 +373,31 @@ const keyOf = (id: string, e: SchemaEntity) => asStr(e.attributes.key) || id;
 const children = (e: SchemaEntity | undefined) => (Array.isArray((e as { children?: string[] })?.children) ? (e as { children?: string[] }).children! : []);
 const coerce = (v: unknown) => (typeof v === "string" && v.trim() !== "" && !Number.isNaN(Number(v)) ? Number(v) : v ?? "");
 const wordCount = (v: string) => (v.trim() ? v.trim().split(/\s+/).length : 0);
+
+// Value-equality that treats numerically-equal primitives as the same (so a
+// calculated `2` doesn't endlessly overwrite a typed `"2"`), with shallow array
+// support. Used to gate calculated-value / setValue updates against churn.
+const sameValue = (a: unknown, b: unknown): boolean => {
+  if (a === b) return true;
+  if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((x, i) => sameValue(x, b[i]));
+  if (a == null || b == null || typeof a === "object" || typeof b === "object") return false;
+  const sa = String(a), sb = String(b);
+  if (sa.trim() !== "" && sb.trim() !== "") {
+    const na = Number(a), nb = Number(b);
+    if (!Number.isNaN(na) && !Number.isNaN(nb)) return na === nb;
+  }
+  return sa === sb;
+};
+
+// The type-appropriate "empty" for a field — so clearing on hide doesn't put a
+// string "" into an array/boolean field.
+const emptyValueFor = (e: SchemaEntity): unknown => {
+  if (e.type === "checkbox") return false;
+  if (e.type === "selectBoxes" || e.type === "file" || e.type === "tagsField") return [];
+  if (GRID.has(e.type)) return [];
+  if (e.type === "select" && Boolean(e.attributes.multiple)) return [];
+  return "";
+};
 
 // Minimal input mask: 9=digit, a=letter, *=alphanumeric, others literal.
 function maskValue(mask: string, raw: string): string {
@@ -431,13 +504,13 @@ export default function FormRenderer({ schema }: { schema: string }) {
         if (CONTAINER.has(e.type)) { walk(children(e)); continue; }
         // Logic setValue rules (run before calculated value).
         const lg = evalLogic(e.attributes);
-        if (lg.value !== undefined && lg.value !== values[id]) { next[id] = lg.value; changed = true; }
+        if (lg.value !== undefined && !sameValue(lg.value, values[id])) { next[id] = lg.value; changed = true; }
         const expr = asStr(e.attributes.calculateValue);
         if (!expr) continue;
         // Once the user edits a field, stop recalculating if override is allowed.
         if (asBool(e.attributes.allowCalculateOverride) && touched.current.has(id)) continue;
         const computed = evaluateExpression(expr, scope);
-        if (computed !== undefined && computed !== values[id]) { next[id] = computed; changed = true; }
+        if (computed !== undefined && !sameValue(computed, values[id])) { next[id] = computed; changed = true; }
       }
     };
     walk(root);
@@ -493,7 +566,7 @@ export default function FormRenderer({ schema }: { schema: string }) {
         if (!e) continue;
         if (CONTAINER.has(e.type)) { if (!GRID.has(e.type)) walk(children(e)); continue; }
         if (asBool(e.attributes.clearOnHide) && !isVisible(e) && values[id] !== undefined && values[id] !== "") {
-          next[id] = "";
+          next[id] = emptyValueFor(e);
           changed = true;
         }
       }
@@ -548,8 +621,31 @@ export default function FormRenderer({ schema }: { schema: string }) {
     return null;
   };
 
+  // The data-field cell ids directly under a grid (skipping layout/static).
+  const gridCellIds = (e: SchemaEntity) =>
+    children(e).filter((cid) => entities[cid] && !CONTAINER.has(entities[cid].type) && !STATIC.has(entities[cid].type));
+
+  // Fully validate every cell of every row (not just required-emptiness), using
+  // a per-row scope so min/max/pattern/email and customValidation all apply
+  // inside grids. Returns the first error message, or null.
+  const validateGridRows = (e: SchemaEntity, rows: Record<string, unknown>[]): string | null => {
+    if (asBool(e.attributes.required) && rows.length === 0) return "Add at least one row";
+    const cellIds = gridCellIds(e);
+    for (let ri = 0; ri < rows.length; ri++) {
+      const row = rows[ri];
+      const rowScope: Scope = {};
+      for (const cid of cellIds) rowScope[keyOf(cid, entities[cid])] = coerce(row[cid]);
+      for (const cid of cellIds) {
+        const ce = entities[cid];
+        const err = validateField(ce, row[cid], { ...rowScope, value: coerce(row[cid]) });
+        if (err) return `Row ${ri + 1}: ${asStr(ce.attributes.label) || "field"} — ${err}`;
+      }
+    }
+    return null;
+  };
+
   // Renders just the input control for an entity, bound to value/onChange.
-  const renderControl = (e: SchemaEntity, value: unknown, onChange: (v: unknown) => void, disabled: boolean) => {
+  const renderControl = (e: SchemaEntity, value: unknown, onChange: (v: unknown) => void, disabled: boolean, a11y?: FieldA11y) => {
     const a = e.attributes;
     // Text-like extras (Text Field parity): mask, text case, a11y attributes.
     const textExtras = {
@@ -558,10 +654,17 @@ export default function FormRenderer({ schema }: { schema: string }) {
       autoFocus: asBool(a.autofocus),
       spellCheck: a.spellcheck === undefined ? undefined : asBool(a.spellcheck),
     };
+    // ARIA attributes shared by single labelable controls (input/textarea/select).
+    const aria = {
+      id: a11y?.id,
+      "aria-invalid": a11y?.invalid || undefined,
+      "aria-required": a11y?.required || undefined,
+      "aria-describedby": a11y?.describedBy,
+    };
     const common = {
       value: asStr(value),
       onChange: (ev: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => onChange(applyTextTransforms(a, ev.target.value)),
-      className: inputClass, placeholder: asStr(a.placeholder), disabled, ...textExtras,
+      className: inputClass, placeholder: asStr(a.placeholder), disabled, ...aria, ...textExtras,
     };
     switch (e.type) {
       case "textarea": {
@@ -581,6 +684,10 @@ export default function FormRenderer({ schema }: { schema: string }) {
             disabled={disabled}
             tabIndex={typeof a.tabIndex === "number" ? a.tabIndex : undefined}
             autoFocus={asBool(a.autofocus)}
+            id={a11y?.id}
+            invalid={a11y?.invalid}
+            required={a11y?.required}
+            describedBy={a11y?.describedBy}
           />
         );
         if (!asStr(a.prefix) && !asStr(a.suffix)) return num;
@@ -598,13 +705,13 @@ export default function FormRenderer({ schema }: { schema: string }) {
       case "phoneNumber": return <input {...common} type="tel" />;
       case "datetime": return <input {...common} type={asBool(a.enableTime) ? "datetime-local" : "date"} min={asStr(a.minDate) || undefined} max={asStr(a.maxDate) || undefined} />;
       case "time": return <input {...common} type="time" />;
-      case "tagsField": return <TagsInput value={value} onChange={onChange} placeholder={asStr(a.placeholder)} disabled={disabled} />;
-      case "file": return <FileField multiple={asBool(a.multiple)} value={value} disabled={disabled} onChange={(v) => onChange(v)} />;
-      case "signature": return <SignaturePad value={value} penColor={asStr(a.penColor) || "#000000"} disabled={disabled} onChange={(v) => onChange(v)} />;
+      case "tagsField": return <TagsInput value={value} onChange={onChange} placeholder={asStr(a.placeholder)} disabled={disabled} id={a11y?.id} labelId={a11y?.labelId} invalid={a11y?.invalid} describedBy={a11y?.describedBy} />;
+      case "file": return <FileField multiple={asBool(a.multiple)} value={value} disabled={disabled} onChange={(v) => onChange(v)} id={a11y?.id} invalid={a11y?.invalid} required={a11y?.required} describedBy={a11y?.describedBy} />;
+      case "signature": return <SignaturePad value={value} penColor={asStr(a.penColor) || "#000000"} disabled={disabled} onChange={(v) => onChange(v)} id={a11y?.id} labelId={a11y?.labelId} invalid={a11y?.invalid} describedBy={a11y?.describedBy} />;
       case "day":
-        return <DayField value={value} onChange={onChange} disabled={disabled} opts={{ hideDay: asBool(a.hideDay), hideMonth: asBool(a.hideMonth), hideYear: asBool(a.hideYear), dayFirst: asBool(a.dayFirst), minYear: asNum(a.minYear), maxYear: asNum(a.maxYear) }} />;
+        return <DayField value={value} onChange={onChange} disabled={disabled} opts={{ hideDay: asBool(a.hideDay), hideMonth: asBool(a.hideMonth), hideYear: asBool(a.hideYear), dayFirst: asBool(a.dayFirst), minYear: asNum(a.minYear), maxYear: asNum(a.maxYear) }} id={a11y?.id} labelId={a11y?.labelId} invalid={a11y?.invalid} describedBy={a11y?.describedBy} />;
       case "select": {
-        if (asBool(a.searchable)) return <SearchSelect options={normOptions(a.options)} value={asStr(value)} onChange={onChange} placeholder={asStr(a.placeholder)} disabled={disabled} />;
+        if (asBool(a.searchable)) return <SearchSelect options={normOptions(a.options)} value={asStr(value)} onChange={onChange} placeholder={asStr(a.placeholder)} disabled={disabled} id={a11y?.id} labelId={a11y?.labelId} invalid={a11y?.invalid} describedBy={a11y?.describedBy} />;
         return (
           <select {...common}>
             <option value="">{asStr(a.placeholder) || "Select…"}</option>
@@ -614,10 +721,10 @@ export default function FormRenderer({ schema }: { schema: string }) {
       }
       case "radio":
         return (
-          <div className={asBool(a.inline) ? "flex flex-wrap gap-4" : "space-y-2"}>
+          <div role="radiogroup" id={a11y?.id} aria-labelledby={a11y?.labelId} aria-invalid={a11y?.invalid || undefined} aria-describedby={a11y?.describedBy} className={asBool(a.inline) ? "flex flex-wrap gap-4" : "space-y-2"}>
             {normOptions(a.options).map((o) => (
               <label key={o.value} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                <input type="radio" checked={value === o.value} onChange={() => onChange(o.value)} disabled={disabled} className="size-4 text-brand-500" />{o.label}
+                <input type="radio" name={a11y?.id} checked={value === o.value} onChange={() => onChange(o.value)} disabled={disabled} className="size-4 text-brand-500" />{o.label}
               </label>
             ))}
           </div>
@@ -625,7 +732,7 @@ export default function FormRenderer({ schema }: { schema: string }) {
       case "selectBoxes": {
         const sel = asArr(value);
         return (
-          <div className={asBool(a.inline) ? "flex flex-wrap gap-4" : "space-y-2"}>
+          <div role="group" id={a11y?.id} aria-labelledby={a11y?.labelId} aria-invalid={a11y?.invalid || undefined} aria-describedby={a11y?.describedBy} className={asBool(a.inline) ? "flex flex-wrap gap-4" : "space-y-2"}>
             {normOptions(a.options).map((o) => (
               <label key={o.value} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                 <input type="checkbox" checked={sel.includes(o.value)} disabled={disabled} onChange={(ev) => onChange(ev.target.checked ? [...sel, o.value] : sel.filter((x) => x !== o.value))} className="size-4 rounded text-brand-500" />{o.label}
@@ -635,7 +742,7 @@ export default function FormRenderer({ schema }: { schema: string }) {
         );
       }
       case "checkbox":
-        return <input type="checkbox" checked={asBool(value)} onChange={(ev) => onChange(ev.target.checked)} disabled={disabled} className="size-4 rounded text-brand-500" />;
+        return <input type="checkbox" id={a11y?.id} aria-invalid={a11y?.invalid || undefined} aria-required={a11y?.required || undefined} aria-describedby={a11y?.describedBy} checked={asBool(value)} onChange={(ev) => onChange(ev.target.checked)} disabled={disabled} className="size-4 rounded text-brand-500" />;
       default: return <input {...common} type="text" />;
     }
   };
@@ -646,14 +753,17 @@ export default function FormRenderer({ schema }: { schema: string }) {
     const lg = evalLogic(a);
     const disabled = lg.disabled ?? asBool(a.disabled);
     const required = lg.required ?? asBool(a.required);
+    const controlId = `f-${id}`, labelId = `l-${id}`, errId = `er-${id}`, descId = `de-${id}`;
+    const hasErr = !!errors[id];
     if (e.type === "checkbox") {
+      const a11y: FieldA11y = { id: controlId, labelId, invalid: hasErr, required, describedBy: hasErr ? errId : undefined };
       return (
         <div key={id}>
-          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-            {renderControl(e, values[id], (v) => set(id, v), disabled)}
+          <label htmlFor={controlId} id={labelId} className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+            {renderControl(e, values[id], (v) => set(id, v), disabled, a11y)}
             {hideLabel ? null : (<>{asStr(a.label)}{required ? <span className="text-error-500"> *</span> : null}</>)}
           </label>
-          {errors[id] ? <p className="mt-1 text-xs text-error-500">{errors[id]}</p> : null}
+          {errors[id] ? <p id={errId} role="alert" className="mt-1 text-xs text-error-500">{errors[id]}</p> : null}
         </div>
       );
     }
@@ -662,20 +772,27 @@ export default function FormRenderer({ schema }: { schema: string }) {
       asBool(a.showCharCount) ? `${str.length} characters` : null,
       asBool(a.showWordCount) ? `${wordCount(str)} words` : null,
     ].filter(Boolean).join(" · ");
+    const labelable = !NON_LABELABLE.has(e.type);
+    const describedBy = [
+      hasErr ? errId : null,
+      asStr(a.description) ? descId : null,
+      counters ? `${descId}-c` : null,
+    ].filter(Boolean).join(" ") || undefined;
+    const a11y: FieldA11y = { id: controlId, labelId, invalid: hasErr, required, describedBy };
     return (
       <div key={id}>
         {hideLabel ? null : (
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+          <label htmlFor={labelable ? controlId : undefined} id={labelId} className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
             {asStr(a.label)}{required ? <span className="text-error-500"> *</span> : null}
           </label>
         )}
-        {renderControl(e, values[id], (v) => set(id, v), disabled)}
+        {renderControl(e, values[id], (v) => set(id, v), disabled, a11y)}
         {asStr(a.footer) ? <p className="mt-1 text-xs text-gray-400">{asStr(a.footer)}</p> : null}
         <div className="mt-1 flex items-center justify-between gap-2">
-          {asStr(a.description) ? <p className="text-xs text-gray-400">{asStr(a.description)}</p> : <span />}
-          {counters ? <p className="text-xs text-gray-400">{counters}</p> : null}
+          {asStr(a.description) ? <p id={descId} className="text-xs text-gray-400">{asStr(a.description)}</p> : <span />}
+          {counters ? <p id={`${descId}-c`} className="text-xs text-gray-400">{counters}</p> : null}
         </div>
-        {errors[id] ? <p className="mt-1 text-xs text-error-500">{errors[id]}</p> : null}
+        {errors[id] ? <p id={errId} role="alert" className="mt-1 text-xs text-error-500">{errors[id]}</p> : null}
       </div>
     );
   };
@@ -698,10 +815,12 @@ export default function FormRenderer({ schema }: { schema: string }) {
               <div className={edit ? "space-y-3" : "grid gap-3 sm:grid-cols-2"}>
                 {fieldIds.map((cid) => {
                   const ce = entities[cid];
+                  const cellId = `g-${id}-${ri}-${cid}`, cellLabelId = `${cellId}-l`;
+                  const cellA11y: FieldA11y = { id: cellId, labelId: cellLabelId, invalid: false, required: asBool(ce.attributes.required), describedBy: undefined };
                   return (
                     <div key={cid}>
-                      <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">{asStr(ce.attributes.label)}</label>
-                      {renderControl(ce, row[cid], (v) => { const n = rows.map((r, i) => (i === ri ? { ...r, [cid]: v } : r)); setRows(n); }, false)}
+                      <label htmlFor={NON_LABELABLE.has(ce.type) ? undefined : cellId} id={cellLabelId} className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">{asStr(ce.attributes.label)}</label>
+                      {renderControl(ce, row[cid], (v) => { const n = rows.map((r, i) => (i === ri ? { ...r, [cid]: v } : r)); setRows(n); }, false, cellA11y)}
                     </div>
                   );
                 })}
@@ -711,7 +830,7 @@ export default function FormRenderer({ schema }: { schema: string }) {
           ))}
         </div>
         <button type="button" onClick={() => setRows([...rows, {}])} className="mt-2 text-sm font-medium text-brand-500 hover:text-brand-600">+ Add {edit ? "entry" : "row"}</button>
-        {errors[id] ? <p className="mt-1 text-xs text-error-500">{errors[id]}</p> : null}
+        {errors[id] ? <p role="alert" className="mt-1 text-xs text-error-500">{errors[id]}</p> : null}
       </div>
     );
   };
@@ -727,7 +846,8 @@ export default function FormRenderer({ schema }: { schema: string }) {
         if (!ce || !isVisible(ce)) continue;
         if (GRID.has(ce.type)) {
           const rows = Array.isArray(values[id]) ? (values[id] as Record<string, unknown>[]) : [];
-          if (asBool(ce.attributes.required) && rows.length === 0) errs[id] = "Add at least one row";
+          const gerr = validateGridRows(ce, rows);
+          if (gerr) errs[id] = gerr;
           continue;
         }
         if (CONTAINER.has(ce.type)) { walk(children(ce)); continue; }
@@ -832,12 +952,15 @@ export default function FormRenderer({ schema }: { schema: string }) {
         if (!e || !isVisible(e)) continue;
         if (GRID.has(e.type)) {
           const rows = Array.isArray(values[id]) ? (values[id] as Record<string, unknown>[]) : [];
-          if (asBool(e.attributes.required) && rows.length === 0) next[id] = "Add at least one row";
-          rows.forEach((row, ri) => children(e).forEach((cid) => {
-            const ce = entities[cid];
-            if (ce && asBool(ce.attributes.required) && (row[cid] === undefined || row[cid] === "")) next[id] = `Row ${ri + 1}: ${asStr(ce.attributes.label)} is required`;
-          }));
-          data[keyOf(id, e)] = rows;
+          const gerr = validateGridRows(e, rows);
+          if (gerr) next[id] = gerr;
+          // Emit rows keyed by each cell's field key — never the internal entity id.
+          const cellIds = gridCellIds(e);
+          data[keyOf(id, e)] = rows.map((row) => {
+            const out: Record<string, unknown> = {};
+            for (const cid of cellIds) out[keyOf(cid, entities[cid])] = row[cid] ?? null;
+            return out;
+          });
           continue;
         }
         if (CONTAINER.has(e.type)) { walk(children(e)); continue; }
@@ -857,13 +980,13 @@ export default function FormRenderer({ schema }: { schema: string }) {
   const hasButton = root.some((id) => entities[id]?.type === "button");
 
   return (
-    <form onSubmit={onSubmit} className="space-y-5">
+    <form onSubmit={onSubmit} noValidate className="space-y-5">
       {root.map((id) => renderEntity(id))}
       {!hasButton && (
         <button type="submit" className="rounded-lg bg-brand-500 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-600">Submit</button>
       )}
       {submitted && (
-        <div className="rounded-xl border border-success-500/30 bg-success-50 p-4 dark:bg-success-500/10">
+        <div className="rounded-xl border border-success-500/30 bg-success-50 p-4 dark:bg-success-500/10" role="status">
           <p className="mb-2 text-sm font-medium text-success-600">Submitted ✓</p>
           <pre className="overflow-auto text-xs text-gray-600 dark:text-gray-300">{JSON.stringify(submitted, null, 2)}</pre>
         </div>

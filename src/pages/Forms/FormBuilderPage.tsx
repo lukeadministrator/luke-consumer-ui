@@ -52,13 +52,107 @@ import FormRenderer from "../../components/formBuilder/FormRenderer";
 import AiAssistPanel from "./AiAssistPanel";
 import CapabilityBuildingAnimation from "./CapabilityBuildingAnimation";
 import type { BuilderSchemaLike } from "../../lib/formAgentApi";
+import { z } from "zod";
+import {
+  collectKeys,
+  duplicateKeyIds,
+  isKeyed,
+  isValidKey,
+  keyOf,
+  normalizeKeys,
+  orderedIds,
+  repairSchema,
+  sanitizeKey,
+  uniqueKey,
+  validateSchema,
+  type FormSchema,
+} from "../../lib/formSchema";
+import { analyzeExpression } from "../../lib/expression";
 
 type BuilderSchema = Schema<typeof formBuilder>;
+
+// Free-text expression attributes the renderer evaluates — validated for syntax
+// and unknown field references at authoring time.
+const EXPR_ATTRS = ["calculateValue", "customConditional", "customValidation", "customDefaultValue"] as const;
+
+// Build a real ZodError carrying `message` — the attribute editors only render
+// errors that are ZodError instances (see components.tsx `errorText`).
+const makeFieldError = (message: string): z.ZodError =>
+  (z.string().refine(() => false, message).safeParse("") as { error: z.ZodError }).error;
+
+// Minimal structural view of the builder store, for the derived-error pass.
+type DerivedErrorStore = {
+  getSchema(): unknown;
+  setEntityAttributeError(entityId: string, name: string, error?: unknown): void;
+  resetEntityAttributeError(entityId: string, name: string): void;
+};
+
+// The set of identifiers an expression may legally reference: every field key
+// plus the implicit `value` (the field's own value, used in custom validation).
+function knownKeySet(s: FormSchema): Set<string> {
+  const known = new Set<string>(["value"]);
+  for (const { key } of collectKeys(s)) known.add(key);
+  return known;
+}
+
+// Syntax / unknown-reference problems across all expression attributes.
+function expressionProblems(s: FormSchema): Array<{ entityId: string; attr: string; message: string }> {
+  const known = knownKeySet(s);
+  const out: Array<{ entityId: string; attr: string; message: string }> = [];
+  for (const id of orderedIds(s)) {
+    const e = s.entities[id];
+    if (!e) continue;
+    for (const attr of EXPR_ATTRS) {
+      const v = e.attributes[attr];
+      const err = typeof v === "string" ? analyzeExpression(v, known) : null;
+      if (err) out.push({ entityId: id, attr, message: err });
+    }
+  }
+  return out;
+}
+
+// Recompute every field's derived errors (key format/uniqueness + expression
+// syntax/references) from the live schema and push them into the builder, so
+// problems surface in-place in the field editors.
+function applyDerivedErrors(store: DerivedErrorStore): void {
+  const s = store.getSchema() as FormSchema;
+  const dupes = duplicateKeyIds(s);
+  const exprErrs = new Map<string, string>();
+  for (const p of expressionProblems(s)) exprErrs.set(`${p.entityId}|${p.attr}`, p.message);
+
+  for (const id of orderedIds(s)) {
+    const e = s.entities[id];
+    if (!e) continue;
+    if (isKeyed(e)) {
+      const k = e.attributes.key;
+      let msg: string | null = null;
+      if (typeof k === "string" && k !== "" && !isValidKey(k)) {
+        msg = "Use letters, numbers and underscores only (must start with a letter).";
+      } else if (dupes.has(id)) {
+        msg = `Duplicate key "${keyOf(id, e)}" — already used by another field.`;
+      }
+      if (msg) store.setEntityAttributeError(id, "key", makeFieldError(msg));
+      else store.resetEntityAttributeError(id, "key");
+    }
+    for (const attr of EXPR_ATTRS) {
+      if (!(attr in e.attributes)) continue;
+      const m = exprErrs.get(`${id}|${attr}`);
+      if (m) store.setEntityAttributeError(id, attr, makeFieldError(m));
+      else store.resetEntityAttributeError(id, attr);
+    }
+  }
+}
 
 function parseSchema(raw: string): BuilderSchema | undefined {
   if (!raw) return undefined;
   try {
-    return JSON.parse(raw) as BuilderSchema;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || !parsed.entities || !Array.isArray(parsed.root)) {
+      return undefined;
+    }
+    // Hand the builder a structurally-sound schema — dangling refs or a cycle
+    // in a stored draft would otherwise crash useBuilderStore on init.
+    return repairSchema(parsed as FormSchema).schema as unknown as BuilderSchema;
   } catch {
     return undefined;
   }
@@ -85,18 +179,9 @@ function PaletteButton({ item }: { item: PaletteItem }) {
   );
 }
 
-/** camelCase key from a label, made unique against existing keys. */
-function toKey(label: string): string {
-  const words = label.replace(/[^a-zA-Z0-9 ]/g, " ").split(/\s+/).filter(Boolean);
-  if (!words.length) return "field";
-  return words.map((w, i) => (i === 0 ? w.toLowerCase() : w[0].toUpperCase() + w.slice(1).toLowerCase())).join("");
-}
-function uniqueKey(base: string, existing: Set<string>): string {
-  if (!existing.has(base)) return base;
-  let n = 2;
-  while (existing.has(`${base}${n}`)) n++;
-  return `${base}${n}`;
-}
+// Key generation (camelCase from label, made unique) is shared with the schema
+// integrity layer via `sanitizeKey`/`uniqueKey` in lib/formSchema, so add-time
+// keys, manual edits, and AI-applied schemas all agree on what a valid key is.
 // Only these entity types actually define a `key` attribute — injecting `key`
 // into any other type makes coltorapps throw "Unknown entity attribute".
 const TYPES_WITH_KEY = new Set<string>(
@@ -183,9 +268,12 @@ const STATUS_BADGE: Record<FormStatus, string> = {
   archived: "bg-amber-50 text-amber-600 dark:bg-amber-500/15",
 };
 
-function Designer({ tenant, formId, form, reload, onSchema, building }: {
+function Designer({ tenant, formId, form, reload, onSchema, building, suppressFlushRef }: {
   tenant: string; formId: string; form: StoredForm; reload: () => void;
   onSchema?: (s: BuilderSchemaLike) => void; building?: boolean;
+  // When set, the next unmount skips its autosave flush — the parent (AI apply)
+  // has already persisted a newer schema and is remounting the builder.
+  suppressFlushRef?: React.RefObject<boolean>;
 }) {
   const navigate = useNavigate();
   const { session } = useAuth();
@@ -212,7 +300,11 @@ function Designer({ tenant, formId, form, reload, onSchema, building }: {
   const [formDesc, setFormDesc] = useState(form.description ?? "");
   const [paletteQuery, setPaletteQuery] = useState("");
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [problemsOpen, setProblemsOpen] = useState(false);
   const saveTimer = useRef<number | null>(null);
+  // True while there are edits not yet persisted to the backend (the 600ms
+  // autosave debounce window). Drives the leave-guard and the unmount flush.
+  const unsavedRef = useRef(false);
 
   // Load the activity feed when the form-settings modal opens.
   useEffect(() => {
@@ -230,16 +322,57 @@ function Designer({ tenant, formId, form, reload, onSchema, building }: {
     initialData: initialSchema ? { schema: initialSchema } : undefined,
     events: {
       onEntityAttributeUpdated(payload) {
-        void builderStore.validateEntityAttribute(payload.entity.id, payload.attributeName);
+        // Keys and expressions need a form-wide pass, not just per-value checks.
+        if (payload.attributeName === "key" || (EXPR_ATTRS as readonly string[]).includes(payload.attributeName)) {
+          applyDerivedErrors(builderStore as unknown as DerivedErrorStore);
+        } else {
+          void builderStore.validateEntityAttribute(payload.entity.id, payload.attributeName);
+        }
       },
       onEntityDeleted(payload) {
         if (payload.entity.id === activeEntityId) setActiveEntityId(null);
+        // A delete can resolve a duplicate/reference elsewhere — re-evaluate.
+        applyDerivedErrors(builderStore as unknown as DerivedErrorStore);
       },
     },
   });
 
+  // Surface any pre-existing problems (legacy or AI-applied schemas) as soon as
+  // the builder mounts, before the user touches anything.
+  useEffect(() => {
+    applyDerivedErrors(builderStore as unknown as DerivedErrorStore);
+  }, [builderStore]);
+
   const { schema } = useBuilderStoreData(builderStore);
   const order = schema.root;
+
+  // Live problem report. `blocking` (structural + key errors) gates check-in /
+  // publish; expression warnings are advisory and surfaced for visibility.
+  const problems = useMemo(() => validateSchema(schema as unknown as FormSchema), [schema]);
+  const exprWarnings = useMemo(() => expressionProblems(schema as unknown as FormSchema), [schema]);
+  const blocking = useMemo(() => problems.filter((p) => p.severity === "error"), [problems]);
+  const problemList = useMemo(() => {
+    const s = schema as unknown as FormSchema;
+    const labelOf = (id?: string) => {
+      if (!id) return "Form";
+      const e = s.entities[id];
+      const lbl = e && typeof e.attributes.label === "string" && e.attributes.label ? e.attributes.label : e?.type;
+      return lbl || id;
+    };
+    const items = problems.map((p) => ({ severity: p.severity, entityId: p.entityId, message: p.message, label: labelOf(p.entityId) }));
+    for (const w of exprWarnings) {
+      items.push({ severity: "warning" as const, entityId: w.entityId, message: `${w.attr}: ${w.message}`, label: labelOf(w.entityId) });
+    }
+    return items;
+  }, [schema, problems, exprWarnings]);
+  const warnCount = problemList.length - blocking.length;
+
+  const focusProblem = (entityId?: string) => {
+    if (!entityId) return;
+    setActiveEntityId(entityId);
+    setSettingsOpen(true);
+    setProblemsOpen(false);
+  };
 
   // Report the live schema up to the parent so the AI panel (which lives above
   // this remounting component) can read the current form and re-apply changes.
@@ -271,22 +404,54 @@ function Designer({ tenant, formId, form, reload, onSchema, building }: {
     return builderStore.subscribe((data) => {
       setSaved(false);
       setDirty(true);
+      unsavedRef.current = true;
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
       saveTimer.current = window.setTimeout(() => {
-        void saveDraft(tenant, formId, JSON.stringify(data.schema)).then(() => setSaved(true));
+        void saveDraft(tenant, formId, JSON.stringify(data.schema)).then(() => {
+          unsavedRef.current = false;
+          setSaved(true);
+        });
       }, 600);
     });
   }, [builderStore, tenant, formId, canEdit]);
 
-  useEffect(() => () => { if (saveTimer.current) window.clearTimeout(saveTimer.current); }, []);
+  // Flush any edit still in the debounce window when the designer unmounts
+  // (route change / remount), so the last keystrokes aren't lost.
+  useEffect(() => () => {
+    if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    // Skip the flush when the parent is remounting us after persisting a newer
+    // schema (AI apply) — flushing the stale local schema would clobber it.
+    if (suppressFlushRef?.current) {
+      suppressFlushRef.current = false;
+      return;
+    }
+    if (canEdit && unsavedRef.current) {
+      unsavedRef.current = false;
+      void saveDraft(tenant, formId, JSON.stringify(builderStore.getSchema()));
+    }
+  }, [builderStore, tenant, formId, canEdit, suppressFlushRef]);
+
+  // Warn before a full page unload (tab close / refresh) with unsaved edits.
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (unsavedRef.current) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, []);
 
   const flushSave = async () => {
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     await saveDraft(tenant, formId, JSON.stringify(builderStore.getSchema()));
+    unsavedRef.current = false;
     setSaved(true);
   };
 
   const handleCheckIn = async () => {
+    if (blocking.length) { setProblemsOpen(true); return; } // never check in a broken schema
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     const artifact = await checkIn(tenant, formId, JSON.stringify(builderStore.getSchema()));
     if (artifact) {
@@ -299,6 +464,7 @@ function Designer({ tenant, formId, form, reload, onSchema, building }: {
   };
 
   const handlePublish = async () => {
+    if (blocking.length) { setProblemsOpen(true); return; } // never publish a broken schema
     await publishVersion(tenant, formId, version);
     setPublishedVersion(version);
     setStatus("published");
@@ -328,7 +494,7 @@ function Designer({ tenant, formId, form, reload, onSchema, building }: {
         const k = ents[eid].attributes.key;
         if (typeof k === "string" && k) existing.add(k);
       }
-      attributes.key = uniqueKey(toKey(String(defaults.label ?? type)), existing);
+      attributes.key = uniqueKey(sanitizeKey(String(defaults.label ?? type)), existing);
     }
     const entity = builderStore.addEntity({
       type,
@@ -498,14 +664,30 @@ function Designer({ tenant, formId, form, reload, onSchema, building }: {
           ) : (
             <>
               <span className="mr-1 hidden text-xs text-gray-400 sm:inline">{saved ? "Draft saved" : "Saving…"}</span>
+              {problemList.length > 0 && (
+                <Tooltip content={blocking.length ? `${blocking.length} problem(s) block check-in & publish` : `${warnCount} warning(s)`}>
+                  <button
+                    type="button"
+                    onClick={() => setProblemsOpen(true)}
+                    className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+                      blocking.length
+                        ? "bg-error-50 text-error-600 hover:bg-error-100 dark:bg-error-500/10 dark:text-error-400"
+                        : "bg-amber-50 text-amber-600 hover:bg-amber-100 dark:bg-amber-500/10 dark:text-amber-400"
+                    }`}
+                  >
+                    <span aria-hidden>{blocking.length ? "⊘" : "⚠"}</span>
+                    {blocking.length ? `${blocking.length} error${blocking.length > 1 ? "s" : ""}` : `${warnCount} warning${warnCount > 1 ? "s" : ""}`}
+                  </button>
+                </Tooltip>
+              )}
               {dirty && version > 0 && (
                 <Tooltip content="Discard draft edits and revert to the live version."><Button size="sm" variant="outline" onClick={handleDiscard}>Discard</Button></Tooltip>
               )}
               <Tooltip content="Preview & test the form — conditions, calculations and validation run live."><Button size="sm" variant="outline" onClick={openPreview} startIcon={<EyeIcon className="size-4" />}>Preview</Button></Tooltip>
               <Tooltip content="Save your progress as a draft. Drafts keep your edits so you can continue working, but can't be used in workflows yet."><Button size="sm" variant="outline" onClick={flushSave} startIcon={<CheckLineIcon className="size-4" />}>Save</Button></Tooltip>
-              <Tooltip content="Check in a version as an artifact that workflows can use. Your draft stays editable for further changes."><Button size="sm" variant="outline" onClick={handleCheckIn} startIcon={<PaperPlaneIcon className="size-4" />}>Check in</Button></Tooltip>
+              <Tooltip content={blocking.length ? "Fix the blocking problems before checking in." : "Check in a version as an artifact that workflows can use. Your draft stays editable for further changes."}><Button size="sm" variant="outline" onClick={handleCheckIn} disabled={blocking.length > 0} startIcon={<PaperPlaneIcon className="size-4" />}>Check in</Button></Tooltip>
               {version > 0 && (
-                <Tooltip content="Make the latest checked-in version the live one that workflows use."><Button size="sm" onClick={handlePublish} disabled={publishedVersion === version}>{publishedVersion === version ? "Published" : `Publish v${version}`}</Button></Tooltip>
+                <Tooltip content={blocking.length ? "Fix the blocking problems before publishing." : "Make the latest checked-in version the live one that workflows use."}><Button size="sm" onClick={handlePublish} disabled={publishedVersion === version || blocking.length > 0}>{publishedVersion === version ? "Published" : `Publish v${version}`}</Button></Tooltip>
               )}
             </>
           )}
@@ -604,6 +786,47 @@ function Designer({ tenant, formId, form, reload, onSchema, building }: {
         </DragOverlay>
       </DndContext>
 
+      <Modal isOpen={problemsOpen} onClose={() => setProblemsOpen(false)} className="mx-4 max-h-[80vh] w-full max-w-[520px] overflow-y-auto">
+        <div className="p-6">
+          <h2 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">Problems</h2>
+          <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+            {blocking.length
+              ? `${blocking.length} blocking issue${blocking.length > 1 ? "s" : ""} must be fixed before you can check in or publish.`
+              : "No blocking issues. The items below are advisory."}
+          </p>
+          {problemList.length === 0 ? (
+            <p className="rounded-lg bg-success-50 px-4 py-3 text-sm text-success-600 dark:bg-success-500/10">Everything looks good — no problems found.</p>
+          ) : (
+            <ul className="space-y-2">
+              {problemList.map((p, i) => (
+                <li key={i}>
+                  <button
+                    type="button"
+                    onClick={() => focusProblem(p.entityId)}
+                    disabled={!p.entityId}
+                    className={`flex w-full items-start gap-2 rounded-lg border px-3 py-2 text-left text-sm transition ${
+                      p.entityId ? "cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5" : "cursor-default"
+                    } ${
+                      p.severity === "error"
+                        ? "border-error-200 dark:border-error-500/30"
+                        : "border-amber-200 dark:border-amber-500/30"
+                    }`}
+                  >
+                    <span aria-hidden className={p.severity === "error" ? "text-error-500" : "text-amber-500"}>
+                      {p.severity === "error" ? "⊘" : "⚠"}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="font-medium text-gray-800 dark:text-gray-200">{p.label}</span>
+                      <span className="block text-gray-500 dark:text-gray-400">{p.message}</span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </Modal>
+
       <Modal isOpen={formSettingsOpen} onClose={() => setFormSettingsOpen(false)} className="mx-4 w-full max-w-[480px]">
         <div className="p-6">
           <h2 className="mb-4 text-lg font-semibold text-gray-800 dark:text-white/90">Form settings</h2>
@@ -695,16 +918,26 @@ export default function FormBuilderPage() {
   // Bumped to remount ONLY the builder (load a new schema into it) without the
   // full-page reload — keeps the docked chat panel and its history mounted.
   const [designerNonce, setDesignerNonce] = useState(0);
+  // Tells the outgoing Designer to skip its unmount autosave flush (the AI apply
+  // already persisted a newer schema; flushing stale local state would clobber it).
+  const suppressFlushRef = useRef(false);
 
   // Apply an AI-produced schema locally: the agent already saved the draft, so
   // just swap it into the form and remount the builder. No refetch, no loading.
   // Only called when the form actually changed (the panel skips no-op turns), so
   // this is exactly where the build animation belongs — a brief reveal flourish.
-  const applyAiSchema = (schema: BuilderSchemaLike, _title: string) => {
+  const applyAiSchema = (schema: BuilderSchemaLike) => {
+    // The agent generates keys without our uniqueness/identifier guards, so
+    // normalize before trusting the schema — then persist the cleaned draft so
+    // the backend matches exactly what the builder now shows.
+    const normalized = normalizeKeys(schema as unknown as FormSchema) as unknown as BuilderSchemaLike;
+    const json = JSON.stringify(normalized);
+    suppressFlushRef.current = true; // the outgoing builder must not re-save stale state
     setAiBuilding(true);
-    setForm((f) => (f ? { ...f, schema: JSON.stringify(schema) } : f));
-    setLiveSchema(schema);
+    setForm((f) => (f ? { ...f, schema: json } : f));
+    setLiveSchema(normalized);
     setDesignerNonce((n) => n + 1);
+    if (tenant && id) void saveDraft(tenant, id, json);
     window.setTimeout(() => setAiBuilding(false), 1300);
   };
 
@@ -742,6 +975,7 @@ export default function FormBuilderPage() {
           reload={() => setReloadKey((k) => k + 1)}
           onSchema={setLiveSchema}
           building={aiBuilding}
+          suppressFlushRef={suppressFlushRef}
         />
       </div>
       {/* Permanent LukeTalks rail — sticky and viewport-tall so it stays fully
