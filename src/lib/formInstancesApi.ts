@@ -201,6 +201,15 @@ export function getProcessTrace(tenant: string, processInstanceId: string): Prom
   return authed(`/api/process-trace/${seg(processInstanceId)}`, tenantInit(tenant));
 }
 
+/** Re-attempt the process start for a submitted instance whose process never
+ *  started. Returns the fresh outcome (status + processInstanceId or error). */
+export function retryProcess(
+  tenant: string,
+  id: string,
+): Promise<{ status: string; processInstanceId: string; error: string }> {
+  return req(tenant, `${BASE}/${seg(id)}/retry-process`, { method: "POST" });
+}
+
 /** Human label for a lifecycle state. */
 export const STATE_LABEL: Record<InstanceState, string> = {
   CREATED: "Created",

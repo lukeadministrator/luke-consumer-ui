@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
+import Button from "../../components/ui/button/Button";
 import { Modal } from "../../components/ui/modal";
 import { useAuth } from "../../context/AuthContext";
 import { listForms } from "../../lib/formsApi";
 import {
   getProcessTrace,
   listInstances,
+  retryProcess,
   STATE_LABEL,
   type FormInstance,
   type InstanceState,
@@ -119,13 +121,16 @@ export default function FormInstancesList() {
 
 // The end-to-end story for one submission.
 function TracePanel({ tenant, instance, formName }: { tenant: string; instance: FormInstance; formName?: string }) {
-  const pid = pidOf(instance);
+  const [inst, setInst] = useState<FormInstance>(instance);
+  const pid = pidOf(inst);
   const [trace, setTrace] = useState<ProcessTrace | null>(null);
   const [loading, setLoading] = useState(!!pid);
   const [error, setError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  const [retryErr, setRetryErr] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!pid) return;
+    if (!pid) { setLoading(false); return; }
     let active = true;
     setLoading(true);
     getProcessTrace(tenant, pid)
@@ -134,13 +139,35 @@ function TracePanel({ tenant, instance, formName }: { tenant: string; instance: 
     return () => { active = false; };
   }, [tenant, pid]);
 
-  const steps = useMemo(() => buildSteps(instance, pid, trace, loading, error), [instance, pid, trace, loading, error]);
+  const submitted = inst.state === "SUBMITTED" || inst.state === "PROCESSED";
+  const canRetry = !pid && submitted;
+
+  const onRetry = async () => {
+    setRetrying(true);
+    setRetryErr(null);
+    try {
+      const r = await retryProcess(tenant, inst.id);
+      const ctx: Record<string, unknown> = { ...(inst.context ?? {}) };
+      ctx.processStartStatus = r.status;
+      if (r.processInstanceId) ctx.processInstanceId = r.processInstanceId;
+      if (r.error) ctx.processStartError = r.error; else delete ctx.processStartError;
+      setTrace(null);
+      setError(null);
+      setInst({ ...inst, context: ctx });
+    } catch (e) {
+      setRetryErr((e as { message?: string })?.message ?? "Retry failed.");
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  const steps = useMemo(() => buildSteps(inst, pid, trace, loading, error), [inst, pid, trace, loading, error]);
 
   return (
     <div className="p-6 sm:p-8">
       <h2 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">Submission trace</h2>
       <p className="mb-6 text-sm text-gray-500 dark:text-gray-400">
-        {formName ?? instance.definitionCode} · <span className="font-mono text-xs">{instance.id}</span>
+        {formName ?? inst.definitionCode} · <span className="font-mono text-xs">{inst.id}</span>
       </p>
       <ol className="relative space-y-5 border-l border-gray-200 pl-6 dark:border-gray-700">
         {steps.map((s, i) => (
@@ -151,6 +178,13 @@ function TracePanel({ tenant, instance, formName }: { tenant: string; instance: 
           </li>
         ))}
       </ol>
+      {canRetry ? (
+        <div className="mt-6 flex items-center gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
+          <Button size="sm" onClick={onRetry} disabled={retrying}>{retrying ? "Retrying…" : "Retry process start"}</Button>
+          <span className="text-xs text-gray-400">Re-fires the process and shows the exact result (or error).</span>
+          {retryErr ? <span className="text-sm text-error-500">{retryErr}</span> : null}
+        </div>
+      ) : null}
     </div>
   );
 }
