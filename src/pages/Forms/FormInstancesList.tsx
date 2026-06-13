@@ -24,6 +24,10 @@ const STATE_BADGE: Record<InstanceState, string> = {
   EXPIRED: "bg-gray-100 text-gray-400 dark:bg-white/10",
   CANCELLED: "bg-error-50 text-error-500 dark:bg-error-500/15",
 };
+// A "submission" = the recipient actually submitted. CREATED/SENT/OPENED are
+// pre-submission (previews, or prefilled-and-sent recipient invites awaiting a
+// fill) and don't belong in the submissions list.
+const SUBMISSION_STATES = new Set<InstanceState>(["SUBMITTED", "PROCESSED"]);
 const fmt = (ms?: number) => (ms ? new Date(ms).toLocaleString() : "—");
 const ctxStr = (i: FormInstance, k: string): string | null => {
   const v = i.context?.[k];
@@ -46,6 +50,13 @@ export default function FormInstancesList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [traceFor, setTraceFor] = useState<FormInstance | null>(null);
+  const [showAll, setShowAll] = useState(false);
+
+  const visible = useMemo(
+    () => (showAll ? rows : rows.filter((r) => SUBMISSION_STATES.has(r.state))),
+    [rows, showAll],
+  );
+  const hiddenCount = rows.length - visible.length;
 
   useEffect(() => {
     if (!tenant) return;
@@ -68,17 +79,23 @@ export default function FormInstancesList() {
     <>
       <PageMeta title="Form Instances | Lukeflow" description="Form submissions and their processes." />
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
-        <div className="mb-4">
-          <h1 className="text-lg font-semibold text-gray-800 dark:text-white/90">Form Instances</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Every submission across your forms, and what happened to it.</p>
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-lg font-semibold text-gray-800 dark:text-white/90">Form Instances</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Submissions across your forms, and what happened to each.</p>
+          </div>
+          <label className="flex shrink-0 items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+            <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} className="size-3.5 rounded text-brand-500" />
+            Show all states{!showAll && hiddenCount > 0 ? ` (${hiddenCount} hidden)` : ""}
+          </label>
         </div>
 
         {loading ? (
           <p className="py-10 text-center text-sm text-gray-400">Loading instances…</p>
         ) : error ? (
           <p className="py-10 text-center text-sm text-error-500">{error}</p>
-        ) : rows.length === 0 ? (
-          <p className="py-10 text-center text-sm text-gray-400">No submissions yet.</p>
+        ) : visible.length === 0 ? (
+          <p className="py-10 text-center text-sm text-gray-400">{showAll ? "No instances yet." : "No submissions yet."}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -92,7 +109,7 @@ export default function FormInstancesList() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
+                {visible.map((r) => (
                   <tr key={r.id} className="border-b border-gray-50 last:border-0 dark:border-gray-800/60">
                     <td className="py-2.5 pr-4">
                       <span className="font-medium text-gray-800 dark:text-gray-200">{names[r.definitionCode] ?? r.definitionCode}</span>
