@@ -1,5 +1,6 @@
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import Link from "@tiptap/extension-link";
 
 // Shared TipTap WYSIWYG editor. Value is stored as HTML. Used both for the
 // rich-text textarea field (fill) and for authoring help content in the builder.
@@ -15,7 +16,10 @@ export default function RichTextEditor({
   minHeightClass?: string;
 }) {
   const editor = useEditor({
-    extensions: [StarterKit],
+    extensions: [
+      StarterKit,
+      Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: "noopener noreferrer", target: "_blank" } }),
+    ],
     content: typeof value === "string" ? value : "",
     editable: !disabled,
     onUpdate: ({ editor }) => onChange(editor.getHTML()),
@@ -28,6 +32,13 @@ export default function RichTextEditor({
   if (!editor) return null;
   const btn = (active: boolean) =>
     `rounded px-2 py-1 text-sm transition ${active ? "bg-brand-50 text-brand-600 dark:bg-brand-500/15" : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/10"}`;
+  const setLink = () => {
+    const prev = (editor.getAttributes("link").href as string | undefined) ?? "https://";
+    const url = window.prompt("Link URL", prev);
+    if (url === null) return; // cancelled
+    if (url.trim() === "") { editor.chain().focus().extendMarkRange("link").unsetLink().run(); return; }
+    editor.chain().focus().extendMarkRange("link").setLink({ href: url.trim() }).run();
+  };
   return (
     <div className="rounded-lg border border-gray-300 dark:border-gray-700">
       <div className="flex flex-wrap gap-0.5 border-b border-gray-200 p-1 dark:border-gray-700">
@@ -39,6 +50,11 @@ export default function RichTextEditor({
         <button type="button" onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} className={btn(editor.isActive("heading", { level: 2 }))}>H</button>
         <button type="button" onClick={() => editor.chain().focus().toggleBulletList().run()} className={btn(editor.isActive("bulletList"))}>• List</button>
         <button type="button" onClick={() => editor.chain().focus().toggleOrderedList().run()} className={btn(editor.isActive("orderedList"))}>1. List</button>
+        <span className="mx-0.5 w-px self-stretch bg-gray-200 dark:bg-gray-700" />
+        <button type="button" onClick={setLink} className={`${btn(editor.isActive("link"))} underline`}>Link</button>
+        {editor.isActive("link") ? (
+          <button type="button" onClick={() => editor.chain().focus().unsetLink().run()} className={btn(false)}>Unlink</button>
+        ) : null}
       </div>
       <EditorContent editor={editor} />
     </div>

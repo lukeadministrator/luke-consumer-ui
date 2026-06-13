@@ -1002,7 +1002,7 @@ export default function FormRenderer({ schema }: { schema: string }) {
         <div className="p-6 sm:p-8">
           {htmlModal?.title ? <h2 className="mb-4 text-lg font-semibold text-gray-800 dark:text-white/90">{htmlModal.title}</h2> : null}
           <div
-            className="prose prose-sm max-w-none text-gray-700 dark:prose-invert dark:text-gray-300 [&_a]:text-brand-600 [&_h1]:text-xl [&_h1]:font-bold [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:font-semibold [&_li]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_ul]:list-disc [&_ul]:pl-5"
+            className="prose prose-sm max-w-none text-gray-700 dark:prose-invert dark:text-gray-300 [&_a]:text-brand-600 [&_a]:underline [&_h1]:text-xl [&_h1]:font-bold [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:font-semibold [&_li]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_ul]:list-disc [&_ul]:pl-5"
             dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(htmlModal?.html ?? "") }}
           />
         </div>
