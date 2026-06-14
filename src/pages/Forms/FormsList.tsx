@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { createColumnHelper } from "@tanstack/react-table";
 import { ChevronLeft, ChevronRight, ClipboardList, FileText } from "lucide-react";
 import DataTable from "../../components/tables/DataTable";
+import Tooltip from "../../components/ui/tooltip/Tooltip";
 import InstancesPanel from "./InstancesPanel";
 import { useAuth, useUser } from "../../context/AuthContext";
 import { canWrite, FORMS } from "../../lib/capabilities";
@@ -257,17 +258,35 @@ export default function FormsList() {
     }),
   ];
 
-  // Definitions-view actions, rendered on the table toolbar (next to search).
+  // Definitions-view actions, rendered as icon buttons on the table toolbar
+  // (next to search), each explained by a hover/focus tooltip.
   const definitionsToolbar = canEdit ? (
     <div className="flex items-center gap-2">
       {trashed.length > 0 && (
-        <Button variant="outline" size="sm" onClick={() => setShowTrash(true)} startIcon={<TrashBinIcon className="size-4" />}>
-          Trash ({trashed.length})
-        </Button>
+        <Tooltip content="Deleted forms — restore them or remove permanently" position="top">
+          <button
+            type="button"
+            aria-label={`View trash (${trashed.length} deleted)`}
+            onClick={() => setShowTrash(true)}
+            className="relative inline-flex size-9 items-center justify-center rounded-lg border border-gray-200 text-gray-600 transition hover:bg-gray-100 hover:text-gray-800 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-white/5"
+          >
+            <TrashBinIcon className="size-5" />
+            <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-error-500 px-1 text-[10px] font-medium leading-none text-white">
+              {trashed.length}
+            </span>
+          </button>
+        </Tooltip>
       )}
-      <Button size="sm" startIcon={<PlusIcon className="size-4" />} onClick={openModal}>
-        Create form
-      </Button>
+      <Tooltip content="Create a new form" position="top">
+        <button
+          type="button"
+          aria-label="Create form"
+          onClick={openModal}
+          className="inline-flex size-9 items-center justify-center rounded-lg bg-brand-500 text-white transition hover:bg-brand-600"
+        >
+          <PlusIcon className="size-5" />
+        </button>
+      </Tooltip>
     </div>
   ) : undefined;
 
