@@ -1,5 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
+import { createColumnHelper } from "@tanstack/react-table";
+import DataTable from "../../components/tables/DataTable";
 import { useAuth, useUser } from "../../context/AuthContext";
 import { canWrite, FORMS } from "../../lib/capabilities";
 import PageMeta from "../../components/common/PageMeta";
@@ -17,6 +19,8 @@ const STATUS_BADGE: Record<FormStatus, string> = {
   published: "bg-success-50 text-success-600 dark:bg-success-500/15",
   archived: "bg-amber-50 text-amber-600 dark:bg-amber-500/15",
 };
+
+const col = createColumnHelper<StoredForm>();
 
 function formatUpdated(ts: number): string {
   return new Date(ts).toLocaleDateString(undefined, {
@@ -88,6 +92,86 @@ export default function FormsList() {
 
   const hasForms = forms.length > 0;
 
+  const columns = [
+    col.accessor("name", {
+      header: "Form Name",
+      cell: (c) => (
+        <div className="flex items-center gap-3">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-500 dark:bg-brand-500/10">
+            <ListIcon className="size-4" />
+          </span>
+          <span className="font-medium text-gray-800 dark:text-white/90">{c.getValue()}</span>
+        </div>
+      ),
+    }),
+    col.accessor("code", {
+      header: "Form ID",
+      cell: (c) => (
+        <span className="font-mono text-xs text-gray-500 dark:text-gray-400">{c.getValue()}</span>
+      ),
+    }),
+    col.accessor("status", {
+      header: "Status",
+      cell: (c) => (
+        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase ${STATUS_BADGE[c.getValue()]}`}>
+          {c.getValue()}
+        </span>
+      ),
+    }),
+    col.accessor((f) => f.publishedVersion ?? 0, {
+      id: "version",
+      header: "Version",
+      cell: (c) => (
+        <span className="text-gray-600 dark:text-gray-300">{c.getValue() ? `v${c.getValue()}` : "—"}</span>
+      ),
+    }),
+    col.accessor("createdAt", {
+      header: "Created",
+      cell: (c) => <span className="text-gray-500 dark:text-gray-400">{formatUpdated(c.getValue())}</span>,
+    }),
+    col.accessor((f) => who(f.createdBy), {
+      id: "createdBy",
+      header: "Created By",
+      cell: (c) => <span className="text-gray-500 dark:text-gray-400">{c.getValue()}</span>,
+    }),
+    col.accessor("updatedAt", {
+      header: "Last Modified",
+      cell: (c) => <span className="text-gray-500 dark:text-gray-400">{formatUpdated(c.getValue())}</span>,
+    }),
+    col.accessor((f) => who(f.updatedBy), {
+      id: "updatedBy",
+      header: "Modified By",
+      cell: (c) => <span className="text-gray-500 dark:text-gray-400">{c.getValue()}</span>,
+    }),
+    col.display({
+      id: "actions",
+      header: "",
+      enableSorting: false,
+      meta: { align: "right" },
+      cell: (c) => {
+        const form = c.row.original;
+        return (
+          <div className="flex items-center justify-end gap-0.5 opacity-0 transition group-hover:opacity-100">
+            {form.publishedVersion ? (
+              <button type="button" aria-label="Fill" title="Fill out this form" onClick={(e) => { e.stopPropagation(); navigate(`/forms/${form.code}/fill`); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-brand-500 dark:hover:bg-gray-800"><PaperPlaneIcon className="size-4" /></button>
+            ) : null}
+            <button type="button" aria-label="Responses" title="View responses" onClick={(e) => { e.stopPropagation(); navigate(`/forms/${form.code}/responses`); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-brand-500 dark:hover:bg-gray-800"><EyeIcon className="size-4" /></button>
+            {canEdit && (
+              <>
+                {form.latestVersion > 0 && (
+                  <button type="button" aria-label="Version history" onClick={(e) => { e.stopPropagation(); setHistoryForm(form); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-brand-500 dark:hover:bg-gray-800"><TimeIcon className="size-4" /></button>
+                )}
+                <button type="button" aria-label="Duplicate" onClick={(e) => { e.stopPropagation(); clone(form.id); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800"><CopyIcon className="size-4" /></button>
+                <button type="button" aria-label={form.status === "archived" ? "Unarchive" : "Archive"} onClick={(e) => { e.stopPropagation(); archive(form.id, form.status !== "archived"); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-amber-500 dark:hover:bg-gray-800"><BoxIcon className="size-4" /></button>
+                <button type="button" aria-label="Delete" onClick={(e) => { e.stopPropagation(); softDelete(form.id); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-error-500 dark:hover:bg-gray-800"><TrashBinIcon className="size-4" /></button>
+              </>
+            )}
+          </div>
+        );
+      },
+    }),
+  ];
+
   return (
     <>
       <PageMeta
@@ -149,64 +233,14 @@ export default function FormsList() {
           ))}
         </div>
       ) : hasForms ? (
-        <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
-          <table className="w-full min-w-[980px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-gray-200 text-xs uppercase tracking-wide text-gray-400 dark:border-gray-800">
-                <th className="px-5 py-3 font-medium">Form Name</th>
-                <th className="px-5 py-3 font-medium">Form ID</th>
-                <th className="px-5 py-3 font-medium">Status</th>
-                <th className="px-5 py-3 font-medium">Version</th>
-                <th className="px-5 py-3 font-medium">Created</th>
-                <th className="px-5 py-3 font-medium">Created By</th>
-                <th className="px-5 py-3 font-medium">Last Modified</th>
-                <th className="px-5 py-3 font-medium">Modified By</th>
-                <th className="px-5 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {forms.map((form) => (
-                <tr
-                  key={form.id}
-                  onClick={() => navigate(`/forms/${form.id}`)}
-                  className="group cursor-pointer border-b border-gray-100 transition-colors last:border-0 hover:bg-gray-50 dark:border-gray-800/70 dark:hover:bg-white/[0.03]"
-                >
-                  <td className="px-5 py-3">
-                    <div className="flex items-center gap-3">
-                      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-500 dark:bg-brand-500/10"><ListIcon className="size-4" /></span>
-                      <span className="font-medium text-gray-800 dark:text-white/90">{form.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-5 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">{form.code}</td>
-                  <td className="px-5 py-3"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase ${STATUS_BADGE[form.status]}`}>{form.status}</span></td>
-                  <td className="px-5 py-3 text-gray-600 dark:text-gray-300">{form.publishedVersion ? `v${form.publishedVersion}` : "—"}</td>
-                  <td className="px-5 py-3 text-gray-500 dark:text-gray-400">{formatUpdated(form.createdAt)}</td>
-                  <td className="px-5 py-3 text-gray-500 dark:text-gray-400">{who(form.createdBy)}</td>
-                  <td className="px-5 py-3 text-gray-500 dark:text-gray-400">{formatUpdated(form.updatedAt)}</td>
-                  <td className="px-5 py-3 text-gray-500 dark:text-gray-400">{who(form.updatedBy)}</td>
-                  <td className="px-5 py-3">
-                    <div className="flex items-center justify-end gap-0.5 opacity-0 transition group-hover:opacity-100">
-                      {form.publishedVersion ? (
-                        <button type="button" aria-label="Fill" title="Fill out this form" onClick={(e) => { e.stopPropagation(); navigate(`/forms/${form.code}/fill`); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-brand-500 dark:hover:bg-gray-800"><PaperPlaneIcon className="size-4" /></button>
-                      ) : null}
-                      <button type="button" aria-label="Responses" title="View responses" onClick={(e) => { e.stopPropagation(); navigate(`/forms/${form.code}/responses`); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-brand-500 dark:hover:bg-gray-800"><EyeIcon className="size-4" /></button>
-                      {canEdit && (
-                        <>
-                          {form.latestVersion > 0 && (
-                            <button type="button" aria-label="Version history" onClick={(e) => { e.stopPropagation(); setHistoryForm(form); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-brand-500 dark:hover:bg-gray-800"><TimeIcon className="size-4" /></button>
-                          )}
-                          <button type="button" aria-label="Duplicate" onClick={(e) => { e.stopPropagation(); clone(form.id); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800"><CopyIcon className="size-4" /></button>
-                          <button type="button" aria-label={form.status === "archived" ? "Unarchive" : "Archive"} onClick={(e) => { e.stopPropagation(); archive(form.id, form.status !== "archived"); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-amber-500 dark:hover:bg-gray-800"><BoxIcon className="size-4" /></button>
-                          <button type="button" aria-label="Delete" onClick={(e) => { e.stopPropagation(); softDelete(form.id); }} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-error-500 dark:hover:bg-gray-800"><TrashBinIcon className="size-4" /></button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          columns={columns}
+          data={forms}
+          onRowClick={(form) => navigate(`/forms/${form.id}`)}
+          searchPlaceholder="Search forms…"
+          minWidth="min-w-[980px]"
+          emptyMessage="No forms match your search."
+        />
       ) : (
         // Empty state shown if the user dismisses the auto-opened modal.
         <div className="flex min-h-[50vh] flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-white px-6 py-16 text-center dark:border-gray-800 dark:bg-white/[0.03]">

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { createColumnHelper } from "@tanstack/react-table";
 import PageMeta from "../../components/common/PageMeta";
 import Button from "../../components/ui/button/Button";
+import DataTable from "../../components/tables/DataTable";
 import { Modal } from "../../components/ui/modal";
 import { useAuth } from "../../context/AuthContext";
 import { listForms } from "../../lib/formsApi";
@@ -41,6 +43,8 @@ function processBadge(i: FormInstance) {
   return <span className="text-xs text-gray-400">—</span>;
 }
 
+const col = createColumnHelper<FormInstance>();
+
 export default function FormInstancesList() {
   const { session } = useAuth();
   const tenant = session?.tenant ?? null;
@@ -73,61 +77,76 @@ export default function FormInstancesList() {
     return () => { active = false; };
   }, [tenant]);
 
+  const columns = [
+    col.accessor((r) => names[r.definitionCode] ?? r.definitionCode, {
+      id: "form",
+      header: "Form",
+      cell: (c) => (
+        <span>
+          <span className="font-medium text-gray-800 dark:text-gray-200">{c.getValue()}</span>
+          <span className="ml-2 font-mono text-xs text-gray-400">{c.row.original.definitionCode}·v{c.row.original.version}</span>
+        </span>
+      ),
+    }),
+    col.accessor((r) => STATE_LABEL[r.state], {
+      id: "status",
+      header: "Status",
+      cell: (c) => (
+        <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATE_BADGE[c.row.original.state]}`}>{c.getValue()}</span>
+      ),
+    }),
+    col.accessor((r) => r.submittedAt ?? r.createdAt, {
+      id: "submitted",
+      header: "Submitted",
+      cell: (c) => <span className="text-gray-600 dark:text-gray-300">{fmt(c.getValue())}</span>,
+    }),
+    col.accessor((r) => (pidOf(r) ? "started" : ctxStr(r, "processStartStatus") === "FAILED" ? "failed" : ""), {
+      id: "process",
+      header: "Process",
+      cell: (c) => processBadge(c.row.original),
+    }),
+    col.display({
+      id: "actions",
+      header: "",
+      enableSorting: false,
+      meta: { align: "right" },
+      cell: (c) => (
+        <button type="button" onClick={() => setTraceFor(c.row.original)} className="text-sm font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400">Trace</button>
+      ),
+    }),
+  ];
+
+  const showAllToggle = (
+    <label className="flex shrink-0 items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+      <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} className="size-3.5 rounded text-brand-500" />
+      Show all states{!showAll && hiddenCount > 0 ? ` (${hiddenCount} hidden)` : ""}
+    </label>
+  );
+
   if (!tenant) return null;
 
   return (
     <>
       <PageMeta title="Form Instances | Lukeflow" description="Form submissions and their processes." />
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
-        <div className="mb-4 flex items-start justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-semibold text-gray-800 dark:text-white/90">Form Instances</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Submissions across your forms, and what happened to each.</p>
-          </div>
-          <label className="flex shrink-0 items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-            <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} className="size-3.5 rounded text-brand-500" />
-            Show all states{!showAll && hiddenCount > 0 ? ` (${hiddenCount} hidden)` : ""}
-          </label>
-        </div>
-
-        {loading ? (
-          <p className="py-10 text-center text-sm text-gray-400">Loading instances…</p>
-        ) : error ? (
-          <p className="py-10 text-center text-sm text-error-500">{error}</p>
-        ) : visible.length === 0 ? (
-          <p className="py-10 text-center text-sm text-gray-400">{showAll ? "No instances yet." : "No submissions yet."}</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400 dark:border-gray-800">
-                  <th className="py-2 pr-4 font-medium">Form</th>
-                  <th className="py-2 pr-4 font-medium">Status</th>
-                  <th className="py-2 pr-4 font-medium">Submitted</th>
-                  <th className="py-2 pr-4 font-medium">Process</th>
-                  <th className="py-2 font-medium" />
-                </tr>
-              </thead>
-              <tbody>
-                {visible.map((r) => (
-                  <tr key={r.id} className="border-b border-gray-50 last:border-0 dark:border-gray-800/60">
-                    <td className="py-2.5 pr-4">
-                      <span className="font-medium text-gray-800 dark:text-gray-200">{names[r.definitionCode] ?? r.definitionCode}</span>
-                      <span className="ml-2 font-mono text-xs text-gray-400">{r.definitionCode}·v{r.version}</span>
-                    </td>
-                    <td className="py-2.5 pr-4"><span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATE_BADGE[r.state]}`}>{STATE_LABEL[r.state]}</span></td>
-                    <td className="py-2.5 pr-4 text-gray-600 dark:text-gray-300">{fmt(r.submittedAt ?? r.createdAt)}</td>
-                    <td className="py-2.5 pr-4">{processBadge(r)}</td>
-                    <td className="py-2.5 text-right">
-                      <button type="button" onClick={() => setTraceFor(r)} className="text-sm font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400">Trace</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+      <div className="mb-6">
+        <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Form Instances</h1>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Submissions across your forms, and what happened to each.</p>
       </div>
+
+      {loading ? (
+        <p className="py-10 text-center text-sm text-gray-400">Loading instances…</p>
+      ) : error ? (
+        <p className="py-10 text-center text-sm text-error-500">{error}</p>
+      ) : (
+        <DataTable
+          columns={columns}
+          data={visible}
+          searchPlaceholder="Search submissions…"
+          minWidth="min-w-[720px]"
+          toolbar={showAllToggle}
+          emptyMessage={showAll ? "No instances yet." : "No submissions yet."}
+        />
+      )}
 
       <Modal isOpen={!!traceFor} onClose={() => setTraceFor(null)} className="mx-4 max-h-[85vh] w-full max-w-[560px] overflow-y-auto">
         {traceFor ? <TracePanel tenant={tenant} instance={traceFor} formName={names[traceFor.definitionCode]} /> : null}
