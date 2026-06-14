@@ -3,7 +3,13 @@ import { DropdownItem } from "../ui/dropdown/DropdownItem";
 import { Dropdown } from "../ui/dropdown/Dropdown";
 import { useAuth, useUser } from "../../context/AuthContext";
 
-export default function UserDropdown() {
+export default function UserDropdown({
+  placement = "bottom",
+  compact = false,
+}: {
+  placement?: "top" | "bottom";
+  compact?: boolean;
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const { user } = useUser();
   const { signOut } = useAuth();
@@ -26,43 +32,56 @@ export default function UserDropdown() {
   const displayName = user?.fullName || user?.firstName || email || "Account";
   const avatarUrl = user?.profilePictureUrl || "/images/user/owner.jpg";
 
+  const place =
+    placement === "top"
+      ? "bottom-full left-0 right-auto mt-0 mb-2"
+      : "right-0 mt-[17px]";
+
   return (
     <div className="relative">
       <button
         onClick={toggleDropdown}
-        className="flex items-center text-gray-700 dropdown-toggle dark:text-gray-400"
+        className={`dropdown-toggle flex items-center text-gray-700 dark:text-gray-400 ${
+          compact
+            ? "justify-center"
+            : "w-full gap-2 rounded-lg px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5"
+        }`}
       >
-        <span className="mr-3 overflow-hidden rounded-full h-11 w-11">
+        <span className={`overflow-hidden rounded-full ${compact ? "size-9" : "size-9 shrink-0"}`}>
           <img src={avatarUrl} alt="User" />
         </span>
 
-        <span className="block mr-1 font-medium text-theme-sm">
-          {displayName}
-        </span>
-        <svg
-          className={`stroke-gray-500 dark:stroke-gray-400 transition-transform duration-200 ${
-            isOpen ? "rotate-180" : ""
-          }`}
-          width="18"
-          height="20"
-          viewBox="0 0 18 20"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path
-            d="M4.3125 8.65625L9 13.3437L13.6875 8.65625"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
+        {!compact && (
+          <>
+            <span className="min-w-0 flex-1 truncate text-left font-medium text-theme-sm">
+              {displayName}
+            </span>
+            <svg
+              className={`shrink-0 stroke-gray-500 dark:stroke-gray-400 transition-transform duration-200 ${
+                isOpen ? "rotate-180" : ""
+              }`}
+              width="18"
+              height="20"
+              viewBox="0 0 18 20"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M4.3125 8.65625L9 13.3437L13.6875 8.65625"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </>
+        )}
       </button>
 
       <Dropdown
         isOpen={isOpen}
         onClose={closeDropdown}
-        className="absolute right-0 mt-[17px] flex w-[260px] flex-col rounded-2xl border border-gray-200 bg-white p-3 shadow-theme-lg dark:border-gray-800 dark:bg-gray-dark"
+        className={`absolute ${place} flex w-[260px] flex-col rounded-2xl border border-gray-200 bg-white p-3 shadow-theme-lg dark:border-gray-800 dark:bg-gray-dark`}
       >
         <div>
           <span className="block font-medium text-gray-700 text-theme-sm dark:text-gray-400">
