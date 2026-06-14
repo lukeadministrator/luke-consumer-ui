@@ -257,6 +257,20 @@ export default function FormsList() {
     }),
   ];
 
+  // Definitions-view actions, rendered on the table toolbar (next to search).
+  const definitionsToolbar = canEdit ? (
+    <div className="flex items-center gap-2">
+      {trashed.length > 0 && (
+        <Button variant="outline" size="sm" onClick={() => setShowTrash(true)} startIcon={<TrashBinIcon className="size-4" />}>
+          Trash ({trashed.length})
+        </Button>
+      )}
+      <Button size="sm" startIcon={<PlusIcon className="size-4" />} onClick={openModal}>
+        Create form
+      </Button>
+    </div>
+  ) : undefined;
+
   return (
     <>
       <PageMeta
@@ -282,19 +296,7 @@ export default function FormsList() {
               : "You have read-only access to forms. Ask an org owner for edit access."}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <FormsViewToggle view={view} onChange={switchView} />
-          {view === "definitions" && canEdit && trashed.length > 0 && (
-            <Button variant="outline" size="sm" onClick={() => setShowTrash((v) => !v)} startIcon={showTrash ? undefined : <TrashBinIcon className="size-4" />}>
-              {showTrash ? "Back to forms" : `Trash (${trashed.length})`}
-            </Button>
-          )}
-          {view === "definitions" && canEdit && hasForms && !showTrash && (
-            <Button startIcon={<PlusIcon className="size-4" />} onClick={openModal}>
-              Create form
-            </Button>
-          )}
-        </div>
+        <FormsViewToggle view={view} onChange={switchView} />
       </div>
 
       {error && (
@@ -325,6 +327,13 @@ export default function FormsList() {
         <div className="flex min-h-[40vh] items-center justify-center text-sm text-gray-400">Loading forms…</div>
       ) : showTrash ? (
         <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => setShowTrash(false)}
+            className="mb-2 inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm font-medium text-gray-600 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/5"
+          >
+            <ChevronLeft className="size-4" /> Back to forms
+          </button>
           {trashed.map((form) => (
             <div key={form.id} className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3 dark:border-gray-800">
               <div>
@@ -345,6 +354,7 @@ export default function FormsList() {
           onRowClick={onRowClick}
           searchPlaceholder="Search forms…"
           minWidth={view === "instances" ? "min-w-[640px]" : "min-w-[980px]"}
+          toolbar={view === "definitions" ? definitionsToolbar : undefined}
           emptyMessage="No forms match your search."
         />
       ) : (
