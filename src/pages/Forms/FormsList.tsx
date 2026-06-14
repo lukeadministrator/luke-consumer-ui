@@ -1,7 +1,9 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { createColumnHelper } from "@tanstack/react-table";
+import { ChevronLeft, ChevronRight, ClipboardList, FileText } from "lucide-react";
 import DataTable from "../../components/tables/DataTable";
+import InstancesPanel from "./InstancesPanel";
 import { useAuth, useUser } from "../../context/AuthContext";
 import { canWrite, FORMS } from "../../lib/capabilities";
 import PageMeta from "../../components/common/PageMeta";
@@ -21,6 +23,33 @@ const STATUS_BADGE: Record<FormStatus, string> = {
 };
 
 const col = createColumnHelper<StoredForm>();
+
+type FormsView = "definitions" | "instances";
+const VIEW_KEY = "lk.forms.view";
+
+function FormsViewToggle({ view, onChange }: { view: FormsView; onChange: (v: FormsView) => void }) {
+  const btn = (v: FormsView, label: string, icon: React.ReactNode) => (
+    <button
+      type="button"
+      onClick={() => onChange(v)}
+      aria-pressed={view === v}
+      className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${
+        view === v
+          ? "bg-white text-brand-600 shadow-theme-xs dark:bg-white/10 dark:text-brand-400"
+          : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+  return (
+    <div className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-gray-200 bg-gray-50 p-0.5 dark:border-gray-800 dark:bg-white/[0.03]">
+      {btn("definitions", "Definitions", <FileText className="size-4" />)}
+      {btn("instances", "Instances", <ClipboardList className="size-4" />)}
+    </div>
+  );
+}
 
 function formatUpdated(ts: number): string {
   return new Date(ts).toLocaleDateString(undefined, {
@@ -49,6 +78,21 @@ export default function FormsList() {
   const [showTrash, setShowTrash] = useState(false);
   const [purgeTarget, setPurgeTarget] = useState<StoredForm | null>(null);
   const [purging, setPurging] = useState(false);
+
+  // Two views over the same form definitions: "definitions" opens a form in the
+  // builder (compose mode); "instances" drills into that form's submissions.
+  const [view, setView] = useState<FormsView>(
+    () => (localStorage.getItem(VIEW_KEY) as FormsView) || "definitions",
+  );
+  const [instancesFor, setInstancesFor] = useState<StoredForm | null>(null);
+  const switchView = (v: FormsView) => {
+    setView(v);
+    localStorage.setItem(VIEW_KEY, v);
+    setInstancesFor(null);
+    setShowTrash(false);
+  };
+  const onRowClick = (form: StoredForm) =>
+    view === "instances" ? setInstancesFor(form) : navigate(`/forms/${form.id}`);
 
   const confirmPurge = async () => {
     if (!purgeTarget || purging) return;
@@ -92,7 +136,7 @@ export default function FormsList() {
 
   const hasForms = forms.length > 0;
 
-  const columns = [
+  const definitionColumns = [
     col.accessor("name", {
       header: "Form Name",
       cell: (c) => (
@@ -172,6 +216,47 @@ export default function FormsList() {
     }),
   ];
 
+  // Instances view: same definitions, but each row drills into its submissions.
+  const instanceColumns = [
+    col.accessor("name", {
+      header: "Form Name",
+      cell: (c) => (
+        <div className="flex items-center gap-3">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-500 dark:bg-brand-500/10">
+            <ClipboardList className="size-4" />
+          </span>
+          <span className="font-medium text-gray-800 dark:text-white/90">{c.getValue()}</span>
+        </div>
+      ),
+    }),
+    col.accessor("code", {
+      header: "Form ID",
+      cell: (c) => <span className="font-mono text-xs text-gray-500 dark:text-gray-400">{c.getValue()}</span>,
+    }),
+    col.accessor("status", {
+      header: "Status",
+      cell: (c) => (
+        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase ${STATUS_BADGE[c.getValue()]}`}>{c.getValue()}</span>
+      ),
+    }),
+    col.accessor((f) => f.publishedVersion ?? 0, {
+      id: "version",
+      header: "Version",
+      cell: (c) => <span className="text-gray-600 dark:text-gray-300">{c.getValue() ? `v${c.getValue()}` : "—"}</span>,
+    }),
+    col.display({
+      id: "open",
+      header: "",
+      enableSorting: false,
+      meta: { align: "right" },
+      cell: () => (
+        <span className="inline-flex items-center gap-1 text-sm font-medium text-brand-600 dark:text-brand-400">
+          Submissions <ChevronRight className="size-4" />
+        </span>
+      ),
+    }),
+  ];
+
   return (
     <>
       <PageMeta
@@ -190,18 +275,21 @@ export default function FormsList() {
             )}
           </h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            {canEdit
-              ? "Design forms with the drag-and-drop builder."
+            {view === "instances"
+              ? "Pick a form to see its submissions and what happened to each."
+              : canEdit
+              ? "Open a form to design it in the builder."
               : "You have read-only access to forms. Ask an org owner for edit access."}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {canEdit && trashed.length > 0 && (
+          <FormsViewToggle view={view} onChange={switchView} />
+          {view === "definitions" && canEdit && trashed.length > 0 && (
             <Button variant="outline" size="sm" onClick={() => setShowTrash((v) => !v)} startIcon={showTrash ? undefined : <TrashBinIcon className="size-4" />}>
               {showTrash ? "Back to forms" : `Trash (${trashed.length})`}
             </Button>
           )}
-          {canEdit && hasForms && !showTrash && (
+          {view === "definitions" && canEdit && hasForms && !showTrash && (
             <Button startIcon={<PlusIcon className="size-4" />} onClick={openModal}>
               Create form
             </Button>
@@ -215,7 +303,25 @@ export default function FormsList() {
         </div>
       )}
 
-      {loading && forms.length === 0 && !showTrash ? (
+      {view === "instances" && instancesFor && tenant ? (
+        <div>
+          <button
+            type="button"
+            onClick={() => setInstancesFor(null)}
+            className="mb-4 inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm font-medium text-gray-600 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/5"
+          >
+            <ChevronLeft className="size-4" /> All forms
+          </button>
+          <div className="mb-4">
+            <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-800 dark:text-white/90">
+              {instancesFor.name}
+              <span className="font-mono text-xs font-normal text-gray-400">{instancesFor.code}</span>
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Submissions for this form, and what happened to each.</p>
+          </div>
+          <InstancesPanel tenant={tenant} definitionCode={instancesFor.code} />
+        </div>
+      ) : loading && forms.length === 0 && !showTrash ? (
         <div className="flex min-h-[40vh] items-center justify-center text-sm text-gray-400">Loading forms…</div>
       ) : showTrash ? (
         <div className="space-y-2">
@@ -234,11 +340,11 @@ export default function FormsList() {
         </div>
       ) : hasForms ? (
         <DataTable
-          columns={columns}
+          columns={view === "instances" ? instanceColumns : definitionColumns}
           data={forms}
-          onRowClick={(form) => navigate(`/forms/${form.id}`)}
+          onRowClick={onRowClick}
           searchPlaceholder="Search forms…"
-          minWidth="min-w-[980px]"
+          minWidth={view === "instances" ? "min-w-[640px]" : "min-w-[980px]"}
           emptyMessage="No forms match your search."
         />
       ) : (

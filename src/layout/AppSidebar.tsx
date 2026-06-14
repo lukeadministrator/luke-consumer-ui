@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router";
 
 import { ChevronDownIcon, GridIcon, HorizontaLDots, ListIcon, LockIcon, MailIcon, PhoneIcon } from "../icons";
-import { FileText, ClipboardList, Inbox } from "lucide-react";
+import { FileText, Inbox } from "lucide-react";
 import { useSidebar } from "../context/SidebarContext";
 import { useAuth } from "../context/AuthContext";
 import { canRead, FORMS } from "../lib/capabilities";
@@ -19,8 +19,7 @@ const FORMS_ITEM: NavItem = {
   icon: <ListIcon />,
   name: "Forms",
   subItems: [
-    { name: "Form Definitions", path: "/forms", icon: <FileText className="size-4" /> },
-    { name: "Form Instances", path: "/forms/instances", icon: <ClipboardList className="size-4" /> },
+    { name: "Forms", path: "/forms", icon: <FileText className="size-4" /> },
     { name: "Form Inbox", path: "/forms/inbox", icon: <Inbox className="size-4" /> },
   ],
 };
