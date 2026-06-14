@@ -5,7 +5,7 @@ import Backdrop from "./Backdrop";
 import AppSidebar from "./AppSidebar";
 
 const LayoutContent: React.FC = () => {
-  const { isExpanded, isMobileOpen } = useSidebar();
+  const { isExpanded, isHovered, isMobileOpen } = useSidebar();
 
   return (
     <div className="min-h-screen lg:flex">
@@ -13,9 +13,12 @@ const LayoutContent: React.FC = () => {
         <AppSidebar />
         <Backdrop />
       </div>
+      {/* Header + content track the sidebar's *current* width — including the
+          hover-expanded state — so the app header never overlaps the sidebar
+          (which would clip the logo, since the header stacks above it). */}
       <div
         className={`flex-1 transition-all duration-300 ease-in-out ${
-          isExpanded ? "lg:ml-[256px]" : "lg:ml-[76px]"
+          isExpanded || isHovered ? "lg:ml-[256px]" : "lg:ml-[76px]"
         } ${isMobileOpen ? "ml-0" : ""}`}
       >
         <AppHeader />
