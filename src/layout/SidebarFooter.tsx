@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { ChevronsLeft, ChevronsRight, Search } from "lucide-react";
+import { Lock, LockOpen, Search } from "lucide-react";
 import { useSidebar } from "../context/SidebarContext";
 import { ThemeToggleButton } from "../components/common/ThemeToggleButton";
 import NotificationDropdown from "../components/header/NotificationDropdown";
@@ -70,11 +70,15 @@ export default function SidebarFooter() {
             <button
               type="button"
               onClick={toggleSidebar}
-              aria-label={isExpanded ? "Collapse sidebar" : "Pin sidebar open"}
-              title={isExpanded ? "Collapse" : "Pin open"}
-              className="ml-auto hidden size-11 items-center justify-center rounded-full border border-gray-200 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 dark:border-gray-800 dark:text-gray-400 dark:hover:bg-gray-800 lg:flex"
+              aria-label={isExpanded ? "Unlock sidebar (allow collapse)" : "Lock sidebar open"}
+              title={isExpanded ? "Locked open — click to unlock" : "Lock sidebar open"}
+              className={`ml-auto hidden size-11 items-center justify-center rounded-full border transition lg:flex ${
+                isExpanded
+                  ? "border-brand-200 bg-brand-50 text-brand-600 hover:bg-brand-100 dark:border-brand-500/40 dark:bg-brand-500/15 dark:text-brand-400"
+                  : "border-gray-200 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:border-gray-800 dark:text-gray-400 dark:hover:bg-gray-800"
+              }`}
             >
-              {isExpanded ? <ChevronsLeft className="size-5" /> : <ChevronsRight className="size-5" />}
+              {isExpanded ? <Lock className="size-5" /> : <LockOpen className="size-5" />}
             </button>
           </div>
 
@@ -97,11 +101,11 @@ export default function SidebarFooter() {
           <button
             type="button"
             onClick={toggleSidebar}
-            aria-label="Pin sidebar open"
-            title="Pin open"
+            aria-label="Lock sidebar open"
+            title="Lock sidebar open"
             className="hidden size-11 items-center justify-center rounded-full border border-gray-200 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 dark:border-gray-800 dark:text-gray-400 dark:hover:bg-gray-800 lg:flex"
           >
-            <ChevronsRight className="size-5" />
+            <LockOpen className="size-5" />
           </button>
         </div>
       )}
